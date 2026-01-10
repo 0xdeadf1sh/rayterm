@@ -1,0 +1,4 @@
+-std=c23
+-Wall
+-Wextra
+-Wpedantic
