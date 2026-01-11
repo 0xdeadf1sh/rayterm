@@ -28,6 +28,9 @@ int main([[maybe_unused]] int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    cols *= 2;
+    rows *= 2;
+
     size_t pixelBufferSize = rows * cols * sizeof(uint32_t);
     uint32_t* rgb = malloc(pixelBufferSize);
     if (!rgb) {
@@ -35,15 +38,28 @@ int main([[maybe_unused]] int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    for (uint32_t i = 0; i < rows * cols; ++i) {
-        rgb[i] = 0xFF332211;
+    for (uint32_t row = 0; row < rows; ++row) {
+        for (uint32_t col = 0; col < cols; ++col) {
+            float red = (float)col / (float)(cols - 1);
+            float green = (float)row / (float)(rows - 1);
+            float blue = 255.0f;
+
+            uint32_t ired = (uint32_t)(red * 255.99f);
+            uint32_t igreen = (uint32_t)(green * 255.99f);
+            uint32_t iblue = (uint32_t)(blue * 255.99f);
+
+            rgb[row * cols + col] = 0xFF000000 |
+                                    (iblue << 16) |
+                                    (igreen << 8) |
+                                    ired;
+        }
     }
 
     struct ncvisual_options vopts = {};
     vopts.n = nstd;
     vopts.leny = rows;
     vopts.lenx = cols;
-    vopts.blitter = NCBLIT_1x1;
+    vopts.blitter = NCBLIT_2x2;
     vopts.scaling = NCSCALE_NONE;
 
     if (-1 == ncblit_rgba(rgb, (int32_t)(cols * sizeof(uint32_t)), &vopts)) {
@@ -60,7 +76,7 @@ int main([[maybe_unused]] int argc, char** argv)
         struct ncinput input = {};
         notcurses_get(nc, NULL, &input);
 
-        if (input.id == 'q') {
+        if (input.id == 'q' && input.evtype == NCTYPE_RELEASE) {
             break;
         }
     }

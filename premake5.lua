@@ -83,8 +83,8 @@ project "rayterm"
             "-Wl,--as-needed",
             "-Wl,--no-copy-dt-needed-entries",
             "-fPIE -pie",
-            "-fcf-protection=full", -- x86_64
-            -- "-mbrach-protection=standard", -- aarch64
+            "-fcf-protection=full",             -- x86_64
+            -- "-mbrach-protection=standard",   -- aarch64
             "-fno-delete-null-pointer-checks",
             "-fno-strict-overflow",
             "-fno-strict-aliasing",
