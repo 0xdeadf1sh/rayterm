@@ -24,6 +24,7 @@ project "rayterm"
 
     links {
         "notcurses-core",
+        "m",
     }
 
     defines {
@@ -37,6 +38,7 @@ project "rayterm"
             "`pkg-config --cflags notcurses-core`",
             "-std=c23",
             "-g",
+            "-O1",
             "-save-temps",
             "-march=native",
             "-Wall",
@@ -48,19 +50,24 @@ project "rayterm"
             "-Wformat=2",
             "-Wformat-security",
             "-Wconversion",
-            "-Wpadded",
             "-Wsign-conversion",
             "-Wimplicit-fallthrough",
             "-Wfloat-equal",
             "-Wtrampolines -fzero-init-padding-bits=all",
             "-Wbidi-chars=any",
             "-Wundef",
+            "-Wunused-variable",
             "-Wshadow",
             "-Wpointer-arith",
             "-Wcast-align",
             "-Wstrict-prototypes",
             "-Wmissing-prototypes",
             "-Wmissing-declarations",
+            "-Wmisleading-indentation",
+            "-Wparentheses",
+            "-Wlogical-op",
+            "-Wuseless-cast",
+            "-Wmissing-include-dirs",
             "-Wredundant-decls",
             "-Wold-style-definition",
             "-Wwrite-strings",
@@ -104,7 +111,7 @@ project "rayterm"
             "-fPIE -pie",
         }
 
-    filter "configurations:debug"
+    filter { "system:linux", "action:gmake", "configurations:debug" }
         symbols "On"
 
         defines {
@@ -112,7 +119,6 @@ project "rayterm"
         }
 
         buildoptions {
-            "-O1",
             "-fno-omit-frame-pointer",
             "-fno-optimize-sibling-calls",
             "-fno-common",
@@ -132,11 +138,9 @@ project "rayterm"
 
         buildoptions {
             "-O2",
-            "-fsanitize-trap=undefined",
         }
 
         linkoptions {
-            "-fsanitize-trap=undefined",
             "-flto",
         }
 
