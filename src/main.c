@@ -5,6 +5,15 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <locale.h>
+#include <math.h>
+
+static float applyGamma(float x, float gamma)
+{
+    return powf(x, gamma);
+}
+
+#define GAMMA       2.2f
+#define GAMMA_INV   (1.0f / 2.2f)
 
 int main([[maybe_unused]] int argc, char** argv)
 {
@@ -43,6 +52,10 @@ int main([[maybe_unused]] int argc, char** argv)
             float red = (float)col / (float)(cols - 1);
             float green = (float)row / (float)(rows - 1);
             float blue = 255.0f;
+
+            red = applyGamma(red, GAMMA_INV);
+            green = applyGamma(green, GAMMA_INV);
+            blue = applyGamma(blue, GAMMA_INV);
 
             uint32_t ired = (uint32_t)(red * 255.99f);
             uint32_t igreen = (uint32_t)(green * 255.99f);
