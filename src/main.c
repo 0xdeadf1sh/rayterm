@@ -142,67 +142,76 @@ int main([[maybe_unused]] int argc, char** argv)
 
     for (;;) {
         struct ncinput input = {};
-        notcurses_get(nc, NULL, &input);
+        uint32_t input_id = 0;
 
-        if (input.id == 'z' && input.evtype == NCTYPE_RELEASE) {
+        bool should_quit = false;
+        while ((input_id = notcurses_get_nblock(nc, &input))) {
+
+            if (input.id == 'z' && input.evtype == NCTYPE_RELEASE) {
+                should_quit = true;
+            }
+
+            if (input.id == 'w') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_forward = true;
+                    is_moving_backward = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_forward = false;
+                }
+            }
+            else if (input.id == 's') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_backward = true;
+                    is_moving_forward = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_backward = false;
+                }
+            }
+
+            if (input.id == 'a') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_left = true;
+                    is_moving_right = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_left = false;
+                }
+            }
+            else if (input.id == 'd') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_right = true;
+                    is_moving_left = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_right = false;
+                }
+            }
+
+            if (input.id == 'q') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_up = true;
+                    is_moving_down = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_up = false;
+                }
+            }
+            else if (input.id == 'e') {
+                if (input.evtype == NCTYPE_PRESS) {
+                    is_moving_down = true;
+                    is_moving_up = false;
+                }
+                else if (input.evtype == NCTYPE_RELEASE) {
+                    is_moving_down = false;
+                }
+            }
+
+        }
+
+        if (should_quit) {
             break;
-        }
-
-        if (input.id == 'w') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_forward = true;
-                is_moving_backward = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_forward = false;
-            }
-        }
-        else if (input.id == 's') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_backward = true;
-                is_moving_forward = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_backward = false;
-            }
-        }
-
-        if (input.id == 'a') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_left = true;
-                is_moving_right = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_left = false;
-            }
-        }
-        else if (input.id == 'd') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_right = true;
-                is_moving_left = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_right = false;
-            }
-        }
-
-        if (input.id == 'q') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_up = true;
-                is_moving_down = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_up = false;
-            }
-        }
-        else if (input.id == 'e') {
-            if (input.evtype == NCTYPE_PRESS) {
-                is_moving_down = true;
-                is_moving_up = false;
-            }
-            else if (input.evtype == NCTYPE_RELEASE) {
-                is_moving_down = false;
-            }
         }
 
         if (is_moving_forward) {
