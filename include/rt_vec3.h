@@ -18,11 +18,19 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
     float x, y, z;
 } rt_vec3_t;
+
+///////////////////////////////////////////////////////////////////////////
+inline rt_vec3_t rt_vec3_create(float x, float y, float z)
+{
+    rt_vec3_t p = { x, y, z };
+    return p;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 inline rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
@@ -140,7 +148,7 @@ inline rt_vec3_t rt_vec3_norm(rt_vec3_t p)
     float k = p.x * p.x + p.y * p.y + p.z * p.z;
     if (k > 0.0f) {
         k = 1.0f / sqrtf(k);
-p.x *= k;
+        p.x *= k;
         p.y *= k;
         p.z *= k;
     }
@@ -204,6 +212,29 @@ inline rt_vec3_t rt_vec3_lerp(rt_vec3_t p, rt_vec3_t q, float k)
     p.x += k * (q.x - p.x);
     p.y += k * (q.y - p.y);
     p.z += k * (q.z - p.z);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
+{
+    p.x = (p.x < k) ? k : p.x;
+    p.y = (p.y < k) ? k : p.y;
+    p.z = (p.z < k) ? k : p.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+inline rt_vec3_t rt_vec3_rand(uint32_t seed)
+{
+    srand(seed);
+    rt_vec3_t p = {
+        .x = (float)(rand() % RAND_MAX),
+        .y = (float)(rand() % RAND_MAX),
+        .z = (float)(rand() % RAND_MAX),
+    };
 
     return p;
 }
