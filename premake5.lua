@@ -71,7 +71,6 @@ project "rayterm"
             "-Wredundant-decls",
             "-Wold-style-definition",
             "-Wwrite-strings",
-            "-Waggregate-return",
             "-Wcast-qual",
             "-Wswitch-default",
             "-Wunreachable-code",
