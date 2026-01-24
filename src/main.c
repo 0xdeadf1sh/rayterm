@@ -1,6 +1,9 @@
 #include "rt_vec3.h"
 #include "rt_ray.h"
 
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_init.h>
 #include <notcurses/notcurses.h>
 
 #include <stdio.h>
@@ -10,14 +13,19 @@
 #include <unistd.h>
 #include <time.h>
 
-#define CAMERA_SPEED 0.1f
+///////////////////////////////////////////////////////////////////////////
+#define GAMMA       2.2f
+#define GAMMA_INV   (1.0f / 2.2f)
 #define BUFFER_LEN(BUFFER) (sizeof(BUFFER) / sizeof((BUFFER)[0]))
+#define CAMERA_SPEED 0.25f
 
+///////////////////////////////////////////////////////////////////////////
 static float compute_gamma(float x, float gamma)
 {
     return powf(x, gamma);
 }
 
+///////////////////////////////////////////////////////////////////////////
 static bool hit_sphere(rt_vec3_t center, float radius, rt_ray_t ray)
 {
     rt_vec3_t oc = rt_vec3_sub(center, ray.org);
@@ -29,6 +37,7 @@ static bool hit_sphere(rt_vec3_t center, float radius, rt_ray_t ray)
     return discriminant >= 0.0f;
 }
 
+///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t compute_color(rt_ray_t ray)
 {
     typedef struct {
@@ -38,15 +47,15 @@ static rt_vec3_t compute_color(rt_ray_t ray)
     }
     sphere_t;
 
-    sphere_t spheres[100];
-    for (uint32_t i = 0; i < 10; ++i) {
-        for (uint32_t j = 0; j < 10; ++j) {
+    sphere_t spheres[4];
+    for (uint32_t i = 0; i < 2; ++i) {
+        for (uint32_t j = 0; j < 2; ++j) {
             sphere_t sphere = {
-                .center = rt_vec3_create((float)i * 2.0f - 10.0f, -2.0f, -(float)j * 2.0f - 2.0f),
-                .color = rt_vec3_create((float)i / 9.0f, (float)j / 9.0f, 1.0f),
+                .center = rt_vec3_create((float)i * 10.0f - 10.0f, -2.0f, -(float)j * 10.0f - 2.0f),
+                .color = rt_vec3_create((float)i / 2.0f, (float)j / 2.0f, 1.0f),
                 .radius = 0.5f,
             };
-            spheres[i * 10 + j] = sphere;
+            spheres[i * 2 + j] = sphere;
         }
     }
 
@@ -63,13 +72,48 @@ static rt_vec3_t compute_color(rt_ray_t ray)
     return rt_vec3_lerp(white_color, blue_color, k);
 }
 
-#define GAMMA       2.2f
-#define GAMMA_INV   (1.0f / 2.2f)
+///////////////////////////////////////////////////////////////////////////
+static SDL_Gamepad* retrieveGamepad()
+{
+    int32_t cnt = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&cnt);
+    if (!cnt) {
+        return NULL;
+    }
 
+    SDL_Gamepad* gamepad = NULL;
+    for (int32_t i = 0; i < cnt; ++i) {
+        SDL_Gamepad* selected = SDL_OpenGamepad(ids[i]);
+        if (!gamepad) {
+            gamepad = selected;
+        }
+
+        if (i > 0) {
+            SDL_CloseGamepad(selected);
+        }
+    }
+    return gamepad;
+}
+
+///////////////////////////////////////////////////////////////////////////
 int main([[maybe_unused]] int argc, char** argv)
 {
+    if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+        fprintf(stderr, "SDL_Init() failed: %s\n", SDL_GetError());
+        return EXIT_FAILURE;
+    }
+
+    if (!SDL_HasGamepad()) {
+        fprintf(stderr, "No gamepads are connected!\n");
+        SDL_Quit();
+        return EXIT_FAILURE;
+    }
+
+    SDL_Gamepad* gamepad = retrieveGamepad();
+
     if (!setlocale(LC_ALL, "")) {
         fprintf(stderr, "%s: setlocale(LC_ALL, \"\") failed\n", argv[0]);
+        SDL_Quit();
         return EXIT_FAILURE;
     }
 
@@ -77,6 +121,7 @@ int main([[maybe_unused]] int argc, char** argv)
     struct notcurses* nc = notcurses_core_init(&opts, stdout);
     if (!nc) {
         fprintf(stderr, "%s: notcurses_init() failed\n", argv[0]);
+        SDL_Quit();
         return EXIT_FAILURE;
     }
 
@@ -85,6 +130,7 @@ int main([[maybe_unused]] int argc, char** argv)
     struct ncplane* nstd = notcurses_stddim_yx(nc, &rows, &cols);
     if (!nstd) {
         fprintf(stderr, "%s: notcurses_stdplane() failed\n", argv[0]);
+        SDL_Quit();
         return EXIT_FAILURE;
     }
 
@@ -92,6 +138,7 @@ int main([[maybe_unused]] int argc, char** argv)
     uint32_t* rgb = malloc(pixelbuffer_size);
     if (!rgb) {
         fprintf(stderr, "%s: malloc() failed\n", argv[0]);
+        SDL_Quit();
         return EXIT_FAILURE;
     }
 
@@ -133,107 +180,46 @@ int main([[maybe_unused]] int argc, char** argv)
     vopts.blitter = NCBLIT_1x1;
     vopts.scaling = NCSCALE_NONE;
 
-    bool is_moving_forward = false;
-    bool is_moving_backward = false;
-    bool is_moving_left = false;
-    bool is_moving_right = false;
-    bool is_moving_up = false;
-    bool is_moving_down = false;
+    bool is_running = true;
+    rt_vec3_t camera_velocity = {};
 
-    for (;;) {
+    while (is_running) {
         struct ncinput input = {};
         uint32_t input_id = 0;
 
-        bool should_quit = false;
         while ((input_id = notcurses_get_nblock(nc, &input))) {
 
-            if (input.id == 'z' && input.evtype == NCTYPE_RELEASE) {
-                should_quit = true;
+            if (input.id == 'q' && input.evtype == NCTYPE_RELEASE) {
+                is_running = false;
             }
+        }
 
-            if (input.id == 'w') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_forward = true;
-                    is_moving_backward = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_forward = false;
-                }
+        SDL_Event event = {};
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+                case SDL_EVENT_QUIT:
+                    is_running = false;
+                    break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_STICK)) {
+                        is_running = false;
+                    }
+                    break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                    break;
+                case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                    int16_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
+                    camera_velocity.z = CAMERA_SPEED * (rightY / (float)UINT16_MAX);
+
+                    int16_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
+                    camera_velocity.x = CAMERA_SPEED * (rightX / (float)UINT16_MAX);
+                    break;
+                default:
+                    break;
             }
-            else if (input.id == 's') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_backward = true;
-                    is_moving_forward = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_backward = false;
-                }
-            }
-
-            if (input.id == 'a') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_left = true;
-                    is_moving_right = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_left = false;
-                }
-            }
-            else if (input.id == 'd') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_right = true;
-                    is_moving_left = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_right = false;
-                }
-            }
-
-            if (input.id == 'q') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_up = true;
-                    is_moving_down = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_up = false;
-                }
-            }
-            else if (input.id == 'e') {
-                if (input.evtype == NCTYPE_PRESS) {
-                    is_moving_down = true;
-                    is_moving_up = false;
-                }
-                else if (input.evtype == NCTYPE_RELEASE) {
-                    is_moving_down = false;
-                }
-            }
-
         }
 
-        if (should_quit) {
-            break;
-        }
-
-        if (is_moving_forward) {
-            camera_center.z -= CAMERA_SPEED;
-        }
-        else if (is_moving_backward) {
-            camera_center.z += CAMERA_SPEED;
-        }
-
-        if (is_moving_left) {
-            camera_center.x -= CAMERA_SPEED;
-        }
-        else if (is_moving_right) {
-            camera_center.x += CAMERA_SPEED;
-        }
-
-        if (is_moving_up) {
-            camera_center.y += CAMERA_SPEED;
-        }
-        else if (is_moving_down) {
-            camera_center.y -= CAMERA_SPEED;
-        }
+        camera_center = rt_vec3_add(camera_center, camera_velocity);
 
         rt_vec3_t viewport_upper_left = rt_vec3_sub(camera_center, rt_vec3_create(0.0f, 0.0f, focal_length));
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_u_half);
@@ -264,16 +250,19 @@ int main([[maybe_unused]] int argc, char** argv)
 
         if (-1 == ncblit_rgba(rgb, (int32_t)(cols * sizeof(uint32_t)), &vopts)) {
             fprintf(stderr, "%s: ncblit_rgba() failed\n", argv[0]);
+            SDL_Quit();
             return EXIT_FAILURE;
         }
 
         if (-1 == notcurses_render(nc)) {
             fprintf(stderr, "%s: notcurses_render() failed\n", argv[0]);
+            SDL_Quit();
             return EXIT_FAILURE;
         }
 
-        usleep(10000);
+        SDL_Delay(16);
     }
     free(rgb);
+    SDL_Quit();
     return notcurses_stop(nc);
 }

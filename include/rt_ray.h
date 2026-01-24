@@ -25,14 +25,14 @@ typedef struct {
 } rt_ray_t;
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_ray_t rt_ray_create(rt_vec3_t org, rt_vec3_t dir)
+static inline rt_ray_t rt_ray_create(rt_vec3_t org, rt_vec3_t dir)
 {
     rt_ray_t ray = { org, dir };
     return ray;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_ray_at(rt_ray_t ray, float t)
+static inline rt_vec3_t rt_ray_at(rt_ray_t ray, float t)
 {
     rt_vec3_t dir_scaled = rt_vec3_mul_scalar(ray.dir, t);
     return rt_vec3_add(ray.org, dir_scaled);
