@@ -45,6 +45,7 @@ typedef struct {
 
 ///////////////////////////////////////////////////////////////////////////
 enum rt_material_type {
+    RT_MATERIAL_TYPE_EMISSIVE,
     RT_MATERIAL_TYPE_DIELECTRIC,
     RT_MATERIAL_TYPE_METALLIC,
 };
@@ -235,6 +236,21 @@ static rt_vec3_t compute_color(rt_ray_t ray,
     }
 
     if (has_hit) {
+        bool is_in_shadow = false;
+        rt_ray_t new_ray = {
+            .dir = rt_vec3_norm(rt_vec3_sub(point_light->position, closest_hit_info.position)),
+            .org = closest_hit_info.position,
+        };
+        for (uint32_t i = 0; i < model_count; ++i) {
+            rt_hit_info hit_info = {};
+            if (rt_sphere_hit(models[i].sphere, new_ray, t_min, t_max, &hit_info)) {
+                if (!is_in_shadow && models[i].material.type != RT_MATERIAL_TYPE_EMISSIVE) {
+                    is_in_shadow = true;
+                    break;
+                }
+            }
+        }
+
         const rt_sphere_t* sphere = &models[closest_hint_index].sphere;
         const rt_material_t* material = &models[closest_hint_index].material;
 
@@ -252,6 +268,9 @@ static rt_vec3_t compute_color(rt_ray_t ray,
 
             rt_vec3_t reflected_color = compute_color(ray, models, model_count, point_light, depth - 1);
             return rt_vec3_mul(reflected_color, fragment_output);
+        }
+        else if (is_in_shadow) {
+            return rt_vec3_mul_scalar(fragment_output, 0.1f);
         }
 
         return fragment_output;
@@ -373,7 +392,7 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_model_t models[6];
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
-            const float sphere_radius = 2.0f;
+            const float sphere_radius = 3.0f;
             models[i * 2 + j].sphere = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
                                                                       -2.0f,
                                                                       -(float)j * 10.0f - 5.0f),
@@ -382,7 +401,7 @@ int main([[maybe_unused]] int argc, char** argv)
             rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
 
             enum rt_material_type material_type_choice = RT_MATERIAL_TYPE_DIELECTRIC;
-            if (i == j) {
+            if (i == 0 && j == 0) {
                 material_type_choice = RT_MATERIAL_TYPE_METALLIC;
             }
 
@@ -395,10 +414,11 @@ int main([[maybe_unused]] int argc, char** argv)
     models[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
     models[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
     models[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    models[4].material.type = RT_MATERIAL_TYPE_DIELECTRIC;
     models[4].fragment_shader = checkerboard_fragment_shader;
 
     rt_point_light_t point_light = {
-        .position = rt_vec3_create(0.0f, 5.0f, -5.0f),
+        .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
         .diffuse = rt_vec3_create(0.25f, 0.5f, 1.0f),
         .intensity = 3.0f,
     };
@@ -407,6 +427,7 @@ int main([[maybe_unused]] int argc, char** argv)
     models[5].sphere = rt_sphere_create(point_light.position, 0.5f);
     models[5].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
     models[5].material.diffuse = point_light.diffuse;
+    models[5].material.type = RT_MATERIAL_TYPE_EMISSIVE;
     models[5].fragment_shader = emissive_fragment_shader;
 
     struct ncvisual_options vopts = {};
@@ -475,7 +496,7 @@ int main([[maybe_unused]] int argc, char** argv)
             }
         }
 
-        camera_center = rt_vec3_add(camera_center, camera_velocity);
+        camera_center = rt_vec3_add(camera_center, rt_vec3_mul_scalar(camera_velocity, delta_time * 0.05f));
 
         rt_vec3_t viewport_upper_left = rt_vec3_sub(camera_center, rt_vec3_create(0.0f, 0.0f, focal_length));
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_u_half);
@@ -484,7 +505,7 @@ int main([[maybe_unused]] int argc, char** argv)
         rt_vec3_t pixel00_loc = rt_vec3_add(viewport_upper_left, pixel_delta_diag);
 
         point_light.position.x = POINT_LIGHT_RADIUS * cosf(total_time);
-        point_light.position.z = POINT_LIGHT_RADIUS * sinf(total_time);
+        point_light.position.z = POINT_LIGHT_RADIUS * sinf(total_time) - 5.0f;
         models[5].sphere.center = point_light.position;
 
         for (uint32_t row = 0; row < rows; ++row) {
