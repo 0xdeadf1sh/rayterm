@@ -29,17 +29,19 @@ static float compute_gamma(float x, float gamma)
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
-    rt_vec3_t position;
-    rt_vec3_t normal;
-    float t;
-} rt_hit_info;
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct {
     rt_vec3_t center;
     float radius;
 }
 rt_sphere_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_vec3_t position;
+    rt_vec3_t normal;
+    float t;
+    float sphere_radius;
+    bool is_front_facing;
+} rt_hit_info;
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
@@ -59,6 +61,8 @@ static bool hit_sphere(rt_sphere_t sphere,
                        float t_max,
                        rt_hit_info* info)
 {
+    assert(info && "hit_sphere: rt_hit_info* is NULL!");
+
     rt_vec3_t oc = rt_vec3_sub(sphere.center, ray.org);
     float a = rt_vec3_sqrlen(ray.dir);
     float h = rt_vec3_dot(ray.dir, oc);
@@ -82,41 +86,62 @@ static bool hit_sphere(rt_sphere_t sphere,
         }
     }
 
-    if (info) {
-        info->t = root_chosen;
-        info->position = rt_ray_at(ray, root_chosen);
-        info->normal = rt_vec3_div_scalar(rt_vec3_sub(info->position, sphere.center), sphere.radius);
-    }
+    info->t = root_chosen;
+    info->position = rt_ray_at(ray, root_chosen);
+    info->normal = rt_vec3_div_scalar(rt_vec3_sub(info->position, sphere.center), sphere.radius);
+    info->is_front_facing = rt_vec3_dot(info->normal, ray.dir) < 0.0f;
+    info->sphere_radius = sphere.radius;
     return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t compute_color(rt_ray_t ray)
 {
-    rt_sphere_t spheres[4];
+    rt_sphere_t spheres[5];
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
             const float sphere_radius = 2.0f;
-            spheres[i * 2 + j] = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 10.0f,
+            spheres[i * 2 + j] = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
                                                                 -2.0f,
-                                                                -(float)j * 10.0f - 2.0f),
+                                                                -(float)j * 10.0f - 5.0f),
                                                   sphere_radius);
         }
     }
+    spheres[4] = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
 
+    const float t_min = 1.0f;
+    const float t_max = 1000.0f;
+
+    rt_hit_info closest_hit_info = {};
+
+    bool has_hit = false;
     for (uint32_t i = 0; i < BUFFER_LEN(spheres); ++i) {
         rt_hit_info hit_info = {};
-        const float t_min = 1.0f;
-        const float t_max = 1000.0f;
-        if (hit_sphere(spheres[i], ray, t_min, t_max, &hit_info) &&
-            rt_vec3_dot(ray.dir, hit_info.normal) < 0.0f) {
-            rt_vec3_t final_color = rt_vec3_mul_scalar(rt_vec3_add_scalar(hit_info.normal, 1.0f), 0.5f);
-            return final_color;
+        if (hit_sphere(spheres[i], ray, t_min, t_max, &hit_info)) {
+            if (!hit_info.is_front_facing) {
+                continue;
+            }
+            if (!has_hit || hit_info.t < closest_hit_info.t) {
+                has_hit = true;
+                closest_hit_info = hit_info;
+            }
         }
     }
 
+    if (has_hit) {
+        if (closest_hit_info.sphere_radius > 100.0f) {
+            uint32_t quant_x = (uint32_t)(ceilf(closest_hit_info.position.x * 0.5f));
+            uint32_t quant_z = (uint32_t)(ceilf(closest_hit_info.position.z * 0.5f));
+            uint32_t quant = quant_x + quant_z;
+            return (quant & 1) ? rt_vec3_create(1.00f, 0.44f, 0.81f)
+                               : rt_vec3_create(0.00f, 0.80f, 1.00f);
+        }
+        rt_vec3_t final_color = rt_vec3_mul_scalar(rt_vec3_add_scalar(closest_hit_info.normal, 1.0f), 0.5f);
+        return final_color;
+    }
+
     rt_vec3_t ray_dir_norm = rt_vec3_norm(ray.dir);
-    rt_vec3_t white_color = { 1.0f, 1.0f, 1.0f };
+    rt_vec3_t white_color = { 1.0f, 0.2f, 0.2f };
     rt_vec3_t blue_color = { 0.0f, 0.0f, 1.0f };
     float k = (ray_dir_norm.y + 1.0f) * 0.5f;
     return rt_vec3_lerp(white_color, blue_color, k);

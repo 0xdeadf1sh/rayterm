@@ -26,14 +26,14 @@ typedef struct {
 } rt_vec3_t;
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_create(float x, float y, float z)
+static inline rt_vec3_t rt_vec3_create(float x, float y, float z)
 {
     rt_vec3_t p = { x, y, z };
     return p;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
+static inline rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
 {
     p.x += q.x;
     p.y += q.y;
@@ -43,7 +43,7 @@ inline rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_add_scalar(rt_vec3_t p, float k)
+static inline rt_vec3_t rt_vec3_add_scalar(rt_vec3_t p, float k)
 {
     p.x += k;
     p.y += k;
@@ -53,7 +53,7 @@ inline rt_vec3_t rt_vec3_add_scalar(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_sub(rt_vec3_t p, rt_vec3_t q)
+static inline rt_vec3_t rt_vec3_sub(rt_vec3_t p, rt_vec3_t q)
 {
     p.x -= q.x;
     p.y -= q.y;
@@ -63,7 +63,7 @@ inline rt_vec3_t rt_vec3_sub(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t p, float k)
+static inline rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t p, float k)
 {
     p.x -= k;
     p.y -= k;
@@ -73,7 +73,7 @@ inline rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_mul(rt_vec3_t p, rt_vec3_t q)
+static inline rt_vec3_t rt_vec3_mul(rt_vec3_t p, rt_vec3_t q)
 {
     p.x *= q.x;
     p.y *= q.y;
@@ -83,7 +83,7 @@ inline rt_vec3_t rt_vec3_mul(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t p, float k)
+static inline rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t p, float k)
 {
     p.x *= k;
     p.y *= k;
@@ -93,7 +93,7 @@ inline rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_div(rt_vec3_t p, rt_vec3_t q)
+static inline rt_vec3_t rt_vec3_div(rt_vec3_t p, rt_vec3_t q)
 {
     p.x /= q.x;
     p.y /= q.y;
@@ -103,7 +103,7 @@ inline rt_vec3_t rt_vec3_div(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, float k)
+static inline rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, float k)
 {
     p.x /= k;
     p.y /= k;
@@ -113,25 +113,25 @@ inline rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline float rt_vec3_len(rt_vec3_t p)
+static inline float rt_vec3_len(rt_vec3_t p)
 {
     return sqrtf(p.x * p.x + p.y * p.y + p.z * p.z);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline float rt_vec3_sqrlen(rt_vec3_t p)
+static inline float rt_vec3_sqrlen(rt_vec3_t p)
 {
     return p.x * p.x + p.y * p.y + p.z * p.z;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline float rt_vec3_dot(rt_vec3_t p, rt_vec3_t q)
+static inline float rt_vec3_dot(rt_vec3_t p, rt_vec3_t q)
 {
     return p.x * q.x + p.y * q.y + p.z * q.z;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_cross(rt_vec3_t p, rt_vec3_t q)
+static inline rt_vec3_t rt_vec3_cross(rt_vec3_t p, rt_vec3_t q)
 {
     rt_vec3_t r = {
         .x = p.y * q.z - p.z * q.y,
@@ -143,7 +143,7 @@ inline rt_vec3_t rt_vec3_cross(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_norm(rt_vec3_t p)
+static inline rt_vec3_t rt_vec3_norm(rt_vec3_t p)
 {
     float k = p.x * p.x + p.y * p.y + p.z * p.z;
     if (k > 0.0f) {
@@ -156,7 +156,7 @@ inline rt_vec3_t rt_vec3_norm(rt_vec3_t p)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline uint32_t rt_vec3_to_uint32(rt_vec3_t p)
+static inline uint32_t rt_vec3_to_uint32(rt_vec3_t p)
 {
     uint32_t x = (uint32_t)(p.x * 255.99f);
     uint32_t y = (uint32_t)(p.y * 255.99f);
@@ -166,7 +166,7 @@ inline uint32_t rt_vec3_to_uint32(rt_vec3_t p)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline uint32_t rt_vec3_to_uint32_alpha(rt_vec3_t p, float a)
+static inline uint32_t rt_vec3_to_uint32_alpha(rt_vec3_t p, float a)
 {
     uint32_t x = (uint32_t)(p.x * 255.99f);
     uint32_t y = (uint32_t)(p.y * 255.99f);
@@ -177,7 +177,7 @@ inline uint32_t rt_vec3_to_uint32_alpha(rt_vec3_t p, float a)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_apply_0(rt_vec3_t p, float (*fun)(void))
+static inline rt_vec3_t rt_vec3_apply_0(rt_vec3_t p, float (*fun)(void))
 {
     p.x = fun();
     p.y = fun();
@@ -187,7 +187,7 @@ inline rt_vec3_t rt_vec3_apply_0(rt_vec3_t p, float (*fun)(void))
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_apply_1(rt_vec3_t p, float (*fun)(float))
+static inline rt_vec3_t rt_vec3_apply_1(rt_vec3_t p, float (*fun)(float))
 {
     p.x = fun(p.x);
     p.y = fun(p.y);
@@ -197,7 +197,7 @@ inline rt_vec3_t rt_vec3_apply_1(rt_vec3_t p, float (*fun)(float))
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_apply_2(rt_vec3_t p, float (*fun)(float, float), float k)
+static inline rt_vec3_t rt_vec3_apply_2(rt_vec3_t p, float (*fun)(float, float), float k)
 {
     p.x = fun(p.x, k);
     p.y = fun(p.y, k);
@@ -207,7 +207,7 @@ inline rt_vec3_t rt_vec3_apply_2(rt_vec3_t p, float (*fun)(float, float), float 
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_lerp(rt_vec3_t p, rt_vec3_t q, float k)
+static inline rt_vec3_t rt_vec3_lerp(rt_vec3_t p, rt_vec3_t q, float k)
 {
     p.x += k * (q.x - p.x);
     p.y += k * (q.y - p.y);
@@ -217,7 +217,7 @@ inline rt_vec3_t rt_vec3_lerp(rt_vec3_t p, rt_vec3_t q, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
+static inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
 {
     p.x = (p.x < k) ? k : p.x;
     p.y = (p.y < k) ? k : p.y;
@@ -227,7 +227,7 @@ inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-inline rt_vec3_t rt_vec3_rand(uint32_t seed)
+static inline rt_vec3_t rt_vec3_rand(uint32_t seed)
 {
     srand(seed);
     rt_vec3_t p = {
