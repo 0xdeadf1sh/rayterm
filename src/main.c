@@ -12,12 +12,14 @@
 #include <locale.h>
 #include <unistd.h>
 #include <time.h>
+#include <assert.h>
 
 ///////////////////////////////////////////////////////////////////////////
 #define GAMMA       2.2f
 #define GAMMA_INV   (1.0f / 2.2f)
 #define BUFFER_LEN(BUFFER) (sizeof(BUFFER) / sizeof((BUFFER)[0]))
 #define CAMERA_SPEED 0.25f
+#define GAMEPAD_DEADZONE 0
 
 ///////////////////////////////////////////////////////////////////////////
 static float compute_gamma(float x, float gamma)
@@ -26,42 +28,90 @@ static float compute_gamma(float x, float gamma)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-static bool hit_sphere(rt_vec3_t center, float radius, rt_ray_t ray)
+typedef struct {
+    rt_vec3_t position;
+    rt_vec3_t normal;
+    float t;
+} rt_hit_info;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_vec3_t center;
+    float radius;
+}
+rt_sphere_t;
+
+///////////////////////////////////////////////////////////////////////////
+static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
 {
-    rt_vec3_t oc = rt_vec3_sub(center, ray.org);
-    float a = rt_vec3_dot(ray.dir, ray.dir);
-    float b = -2.0f * rt_vec3_dot(ray.dir, oc);
-    float c = rt_vec3_dot(oc, oc);
-    c -= radius * radius;
-    float discriminant = b * b - 4 * a * c;
-    return discriminant >= 0.0f;
+    assert(radius > 0.0f && "rt_sphere_create: radius cannot be non-positive!");
+    rt_sphere_t sphere = {
+        .radius = radius,
+        .center = position,
+    };
+    return sphere;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static bool hit_sphere(rt_sphere_t sphere,
+                       rt_ray_t ray,
+                       float t_min,
+                       float t_max,
+                       rt_hit_info* info)
+{
+    rt_vec3_t oc = rt_vec3_sub(sphere.center, ray.org);
+    float a = rt_vec3_sqrlen(ray.dir);
+    float h = rt_vec3_dot(ray.dir, oc);
+    float c = rt_vec3_sqrlen(oc) - sphere.radius * sphere.radius;
+
+    float discriminant = h * h - a * c;
+    if (discriminant < 0.0f) {
+        return false;
+    }
+
+    float sqrt_discriminant = sqrtf(discriminant);
+
+    float root_nearest = (h - sqrt_discriminant) / a;
+    float root_farthest = (h + sqrt_discriminant) / a;
+
+    float root_chosen = root_nearest;
+    if (root_chosen <= t_min || root_chosen >= t_max) {
+        root_chosen = root_farthest;
+        if (root_chosen <= t_min || root_chosen >= t_max) {
+            return false;
+        }
+    }
+
+    if (info) {
+        info->t = root_chosen;
+        info->position = rt_ray_at(ray, root_chosen);
+        info->normal = rt_vec3_div_scalar(rt_vec3_sub(info->position, sphere.center), sphere.radius);
+    }
+    return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t compute_color(rt_ray_t ray)
 {
-    typedef struct {
-        rt_vec3_t center;
-        rt_vec3_t color;
-        float radius;
-    }
-    sphere_t;
-
-    sphere_t spheres[4];
+    rt_sphere_t spheres[4];
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
-            sphere_t sphere = {
-                .center = rt_vec3_create((float)i * 10.0f - 10.0f, -2.0f, -(float)j * 10.0f - 2.0f),
-                .color = rt_vec3_create((float)i / 2.0f, (float)j / 2.0f, 1.0f),
-                .radius = 0.5f,
-            };
-            spheres[i * 2 + j] = sphere;
+            const float sphere_radius = 2.0f;
+            spheres[i * 2 + j] = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 10.0f,
+                                                                -2.0f,
+                                                                -(float)j * 10.0f - 2.0f),
+                                                  sphere_radius);
         }
     }
 
     for (uint32_t i = 0; i < BUFFER_LEN(spheres); ++i) {
-        if (hit_sphere(spheres[i].center, spheres[i].radius, ray)) {
-            return spheres[i].color;
+        rt_hit_info hit_info = {};
+        const float t_min = 1.0f;
+        const float t_max = 1000.0f;
+        if (hit_sphere(spheres[i], ray, t_min, t_max, &hit_info) &&
+            rt_vec3_dot(ray.dir, hit_info.normal) < 0.0f) {
+            rt_vec3_t final_color = rt_vec3_mul_scalar(rt_vec3_add_scalar(hit_info.normal, 1.0f), 0.5f);
+            return final_color;
         }
     }
 
@@ -92,6 +142,7 @@ static SDL_Gamepad* retrieveGamepad()
             SDL_CloseGamepad(selected);
         }
     }
+    SDL_free(ids);
     return gamepad;
 }
 
@@ -208,11 +259,21 @@ int main([[maybe_unused]] int argc, char** argv)
                 case SDL_EVENT_GAMEPAD_BUTTON_UP:
                     break;
                 case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-                    int16_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
-                    camera_velocity.z = CAMERA_SPEED * (rightY / (float)UINT16_MAX);
+                    int32_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
+                    if (rightY < -GAMEPAD_DEADZONE || rightY > GAMEPAD_DEADZONE) {
+                        camera_velocity.z = CAMERA_SPEED * ((float)rightY / 32768.0f);
+                    }
+                    else {
+                        camera_velocity.z = 0.0f;
+                    }
 
-                    int16_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
-                    camera_velocity.x = CAMERA_SPEED * (rightX / (float)UINT16_MAX);
+                    int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
+                    if (rightX < -GAMEPAD_DEADZONE || rightX > GAMEPAD_DEADZONE) {
+                        camera_velocity.x = CAMERA_SPEED * ((float)rightX / 32768.0f);
+                    }
+                    else {
+                        camera_velocity.x = 0.0f;
+                    }
                     break;
                 default:
                     break;
