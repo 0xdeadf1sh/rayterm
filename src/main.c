@@ -44,10 +44,17 @@ typedef struct {
 } rt_sphere_t;
 
 ///////////////////////////////////////////////////////////////////////////
+enum rt_material_type {
+    RT_MATERIAL_TYPE_DIELECTRIC,
+    RT_MATERIAL_TYPE_METALLIC,
+};
+
+///////////////////////////////////////////////////////////////////////////
 typedef struct {
+    enum rt_material_type type;
     rt_vec3_t ambient;
     rt_vec3_t diffuse;
-} rt_phong_material_t;
+} rt_material_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
@@ -59,9 +66,9 @@ typedef struct {
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
     rt_sphere_t sphere;
-    rt_phong_material_t material;
+    rt_material_t material;
     rt_vec3_t (*fragment_shader)(const rt_sphere_t* sphere,
-                                 const rt_phong_material_t* material, 
+                                 const rt_material_t* material, 
                                  const rt_point_light_t* light,
                                  const rt_hit_info* hit_info);
 } rt_model_t;
@@ -78,10 +85,12 @@ static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-static rt_phong_material_t rt_phong_material_create(rt_vec3_t ambient,
-                                                    rt_vec3_t diffuse)
+static rt_material_t rt_material_create(enum rt_material_type type,
+                                        rt_vec3_t ambient,
+                                        rt_vec3_t diffuse)
 {
-    rt_phong_material_t material = {
+    rt_material_t material = {
+        .type = type,
         .ambient = ambient,
         .diffuse = diffuse,
     };
@@ -91,7 +100,7 @@ static rt_phong_material_t rt_phong_material_create(rt_vec3_t ambient,
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t diffuse_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
-                                         const rt_phong_material_t* material,
+                                         const rt_material_t* material,
                                          const rt_point_light_t* light,
                                          const rt_hit_info* hit_info)
 {
@@ -114,7 +123,7 @@ static rt_vec3_t diffuse_fragment_shader([[maybe_unused]] const rt_sphere_t* sph
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t checkerboard_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
-                                              const rt_phong_material_t* material,
+                                              const rt_material_t* material,
                                               const rt_point_light_t* light,
                                               const rt_hit_info* hit_info)
 {
@@ -145,7 +154,7 @@ static rt_vec3_t checkerboard_fragment_shader([[maybe_unused]] const rt_sphere_t
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t emissive_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
-                                          const rt_phong_material_t* material,
+                                          const rt_material_t* material,
                                           [[maybe_unused]] const rt_point_light_t* light,
                                           [[maybe_unused]] const rt_hit_info* hit_info)
 {
@@ -196,9 +205,14 @@ static bool rt_sphere_hit(rt_sphere_t sphere,
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t compute_color(rt_ray_t ray,
                                const rt_model_t* models,
-                               uint32_t modelCount,
-                               const rt_point_light_t* point_light)
+                               uint32_t model_count,
+                               const rt_point_light_t* point_light,
+                               uint32_t depth)
 {
+    if (!depth) {
+        goto compute_sky_color;
+    }
+
     const float t_min = 1.0f;
     const float t_max = 1000.0f;
 
@@ -206,7 +220,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
     uint32_t closest_hint_index = {};
 
     bool has_hit = false;
-    for (uint32_t i = 0; i < modelCount; ++i) {
+    for (uint32_t i = 0; i < model_count; ++i) {
         rt_hit_info hit_info = {};
         if (rt_sphere_hit(models[i].sphere, ray, t_min, t_max, &hit_info)) {
             if (!hit_info.is_front_facing) {
@@ -222,15 +236,28 @@ static rt_vec3_t compute_color(rt_ray_t ray,
 
     if (has_hit) {
         const rt_sphere_t* sphere = &models[closest_hint_index].sphere;
-        const rt_phong_material_t* material = &models[closest_hint_index].material;
+        const rt_material_t* material = &models[closest_hint_index].material;
 
-        return models[closest_hint_index].fragment_shader(sphere,
-                                                          material,
-                                                          point_light,
-                                                          &closest_hit_info);
+        rt_vec3_t fragment_output = models[closest_hint_index].fragment_shader(sphere,
+                                                                               material,
+                                                                               point_light,
+                                                                               &closest_hit_info);
+
+        if (RT_MATERIAL_TYPE_METALLIC == material->type) {
+            rt_vec3_t reflected_ray_dir = rt_vec3_reflect(ray.dir, closest_hit_info.normal);
+            reflected_ray_dir = rt_vec3_norm(reflected_ray_dir);
+
+            ray.dir = reflected_ray_dir;
+            ray.org = closest_hit_info.position;
+
+            rt_vec3_t reflected_color = compute_color(ray, models, model_count, point_light, depth - 1);
+            return rt_vec3_mul(reflected_color, fragment_output);
+        }
+
+        return fragment_output;
     }
 
-    // sky color
+compute_sky_color:
     rt_vec3_t ray_dir_norm = rt_vec3_norm(ray.dir);
     rt_vec3_t white_color = { 1.0f, 0.2f, 0.2f };
     rt_vec3_t blue_color = { 0.0f, 0.0f, 1.0f };
@@ -353,7 +380,13 @@ int main([[maybe_unused]] int argc, char** argv)
                                                         sphere_radius);
             rt_vec3_t diffuse_color = rt_vec3_create(0.25f, 0.5f, 1.0f);
             rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
-            models[i * 2 + j].material = rt_phong_material_create(ambient_color, diffuse_color);
+
+            enum rt_material_type material_type_choice = RT_MATERIAL_TYPE_DIELECTRIC;
+            if (i == j) {
+                material_type_choice = RT_MATERIAL_TYPE_METALLIC;
+            }
+
+            models[i * 2 + j].material = rt_material_create(material_type_choice, ambient_color, diffuse_color);
             models[i * 2 + j].fragment_shader = diffuse_fragment_shader;
         }
     }
@@ -367,7 +400,7 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_point_light_t point_light = {
         .position = rt_vec3_create(0.0f, 5.0f, -5.0f),
         .diffuse = rt_vec3_create(0.25f, 0.5f, 1.0f),
-        .intensity = 2.0f,
+        .intensity = 3.0f,
     };
 
     // light sphere
@@ -469,7 +502,7 @@ int main([[maybe_unused]] int argc, char** argv)
                     .org = camera_center,
                 };
 
-                rt_vec3_t pixel_color = compute_color(r, models, BUFFER_LEN(models), &point_light);
+                rt_vec3_t pixel_color = compute_color(r, models, BUFFER_LEN(models), &point_light, 3);
                 pixel_color = rt_vec3_apply_2(pixel_color, compute_gamma, GAMMA_INV);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
             }

@@ -258,3 +258,14 @@ static inline rt_vec3_t rt_vec3_clamp(rt_vec3_t p, float min, float max)
 
     return p;
 }
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_reflect(rt_vec3_t p, rt_vec3_t n)
+{
+    float d = 2.0f * (p.x * n.x + p.y * n.y + p.z * n.z);
+    p.x -= n.x * d;
+    p.y -= n.y * d;
+    p.z -= n.z * d;
+
+    return p;
+}
