@@ -20,6 +20,7 @@
 #define BUFFER_LEN(BUFFER) (sizeof(BUFFER) / sizeof((BUFFER)[0]))
 #define CAMERA_SPEED 0.25f
 #define GAMEPAD_DEADZONE 0
+#define POINT_LIGHT_RADIUS 10.0f
 
 ///////////////////////////////////////////////////////////////////////////
 static float compute_gamma(float x, float gamma)
@@ -99,10 +100,11 @@ static rt_vec3_t diffuse_fragment_shader([[maybe_unused]] const rt_sphere_t* sph
     assert(light && "diffuse_fragment_shader: light is NULL");
     assert(hit_info && "diffuse_fragment_shader: hit_info is NULL");
 
-    rt_vec3_t ambient = material->ambient;
+    rt_vec3_t light_diffuse = rt_vec3_mul_scalar(light->diffuse, light->intensity);
+    rt_vec3_t ambient = rt_vec3_mul(material->ambient, light_diffuse);
 
     rt_vec3_t light_dir = rt_vec3_norm(rt_vec3_sub(light->position, hit_info->position));
-    rt_vec3_t diffuse_color = material->diffuse;
+    rt_vec3_t diffuse_color = rt_vec3_mul(material->diffuse, light_diffuse);
     float diff = fmaxf(rt_vec3_dot(light_dir, hit_info->normal), 0.0f);
     rt_vec3_t diffuse = rt_vec3_mul_scalar(diffuse_color, diff);
 
@@ -139,6 +141,16 @@ static rt_vec3_t checkerboard_fragment_shader([[maybe_unused]] const rt_sphere_t
     uint32_t quant = quant_x + quant_z;
     return (quant & 1) ? rt_vec3_mul(cumulative, color_0)
                        : rt_vec3_mul(cumulative, color_1);
+}
+
+///////////////////////////////////////////////////////////////////////////
+static rt_vec3_t emissive_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
+                                          const rt_phong_material_t* material,
+                                          [[maybe_unused]] const rt_point_light_t* light,
+                                          [[maybe_unused]] const rt_hit_info* hit_info)
+{
+    assert(material && "emissive_fragment_shader: material is NULL!");
+    return material->diffuse;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -200,7 +212,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
             if (!hit_info.is_front_facing) {
                 continue;
             }
-            if (!has_hit || hit_info.t < closest_hit_info.t) {
+            else if (!has_hit || hit_info.t < closest_hit_info.t) {
                 has_hit = true;
                 closest_hit_info = hit_info;
                 closest_hint_index = i;
@@ -218,6 +230,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
                                                           &closest_hit_info);
     }
 
+    // sky color
     rt_vec3_t ray_dir_norm = rt_vec3_norm(ray.dir);
     rt_vec3_t white_color = { 1.0f, 0.2f, 0.2f };
     rt_vec3_t blue_color = { 0.0f, 0.0f, 1.0f };
@@ -330,7 +343,7 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_vec3_t viewport_u_half = rt_vec3_mul_scalar(viewport_u, 0.5f);
     rt_vec3_t viewport_v_half = rt_vec3_mul_scalar(viewport_v, 0.5f);
 
-    rt_model_t models[5];
+    rt_model_t models[6];
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
             const float sphere_radius = 2.0f;
@@ -341,13 +354,27 @@ int main([[maybe_unused]] int argc, char** argv)
             rt_vec3_t diffuse_color = rt_vec3_create(0.25f, 0.5f, 1.0f);
             rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
             models[i * 2 + j].material = rt_phong_material_create(ambient_color, diffuse_color);
-            models[i * 2 + j].fragment_shader = &diffuse_fragment_shader;
+            models[i * 2 + j].fragment_shader = diffuse_fragment_shader;
         }
     }
+
+    // big sphere
     models[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
     models[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
     models[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    models[4].fragment_shader = &checkerboard_fragment_shader;
+    models[4].fragment_shader = checkerboard_fragment_shader;
+
+    rt_point_light_t point_light = {
+        .position = rt_vec3_create(0.0f, 5.0f, -5.0f),
+        .diffuse = rt_vec3_create(0.25f, 0.5f, 1.0f),
+        .intensity = 2.0f,
+    };
+
+    // light sphere
+    models[5].sphere = rt_sphere_create(point_light.position, 0.5f);
+    models[5].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    models[5].material.diffuse = point_light.diffuse;
+    models[5].fragment_shader = emissive_fragment_shader;
 
     struct ncvisual_options vopts = {};
     vopts.n = nstd;
@@ -359,13 +386,17 @@ int main([[maybe_unused]] int argc, char** argv)
     bool is_running = true;
     rt_vec3_t camera_velocity = {};
 
-    rt_point_light_t point_light = {
-        .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
-        .diffuse = rt_vec3_create(1.0f, 0.0f, 1.0f),
-        .intensity = 1.0f,
-    };
+    float last_time = 0.0f;
+    float total_time = 0.0f;
 
     while (is_running) {
+
+        float current_time = (float)SDL_GetTicks();
+        float delta_time = (last_time > 0.0f) ? (current_time - last_time) : 0.0f;
+        last_time = current_time;
+
+        total_time += delta_time * 0.001f;
+
         struct ncinput input = {};
         uint32_t input_id = 0;
 
@@ -418,6 +449,10 @@ int main([[maybe_unused]] int argc, char** argv)
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_v_half);
 
         rt_vec3_t pixel00_loc = rt_vec3_add(viewport_upper_left, pixel_delta_diag);
+
+        point_light.position.x = POINT_LIGHT_RADIUS * cosf(total_time);
+        point_light.position.z = POINT_LIGHT_RADIUS * sinf(total_time);
+        models[5].sphere.center = point_light.position;
 
         for (uint32_t row = 0; row < rows; ++row) {
 
