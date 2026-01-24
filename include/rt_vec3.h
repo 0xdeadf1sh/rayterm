@@ -113,6 +113,16 @@ static inline rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_negate(rt_vec3_t p)
+{
+    p.x *= -1.0f;
+    p.y *= -1.0f;
+    p.z *= -1.0f;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
 static inline float rt_vec3_len(rt_vec3_t p)
 {
     return sqrtf(p.x * p.x + p.y * p.y + p.z * p.z);
@@ -262,10 +272,71 @@ static inline rt_vec3_t rt_vec3_clamp(rt_vec3_t p, float min, float max)
 ///////////////////////////////////////////////////////////////////////////
 static inline rt_vec3_t rt_vec3_reflect(rt_vec3_t p, rt_vec3_t n)
 {
-    float d = 2.0f * (p.x * n.x + p.y * n.y + p.z * n.z);
+    float d = 2.0f * rt_vec3_dot(p, n);
     p.x -= n.x * d;
     p.y -= n.y * d;
     p.z -= n.z * d;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_refract(rt_vec3_t p, rt_vec3_t n, float k)
+{
+    rt_vec3_t pneg = rt_vec3_negate(p);
+    float cos_theta = fminf(1.0f, rt_vec3_dot(pneg, n));
+    rt_vec3_t perp = rt_vec3_mul_scalar(rt_vec3_add(p, rt_vec3_mul_scalar(n, cos_theta)), k);
+    float a = -sqrtf(fabsf(1.0f - rt_vec3_sqrlen(perp)));
+    rt_vec3_t parl = rt_vec3_mul_scalar(n, a);
+    return rt_vec3_add(perp, parl);
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline float rt_vec3_dist(rt_vec3_t p, rt_vec3_t q)
+{
+    float x = p.x - q.x;
+    float y = p.y - q.y;
+    float z = p.z - q.z;
+
+    return sqrtf(x * x + y * y + z * z);
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline float rt_vec3_sqrdist(rt_vec3_t p, rt_vec3_t q)
+{
+    float x = p.x - q.x;
+    float y = p.y - q.y;
+    float z = p.z - q.z;
+
+    return x * x + y * y + z * z;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_rotate_x(rt_vec3_t p, float r)
+{
+    float py = p.y;
+    float pz = p.z;
+
+    float cos_r = cosf(r);
+    float sin_r = sinf(r);
+
+    p.y = py * cos_r - pz * sin_r;
+    p.z = py * sin_r + pz * cos_r;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_rotate_y(rt_vec3_t p, float r)
+{
+    float px = p.x;
+    float pz = p.z;
+
+    float cos_r = cosf(r);
+    float sin_r = sinf(r);
+
+    p.x =  px * cos_r + pz * sin_r;
+    p.z = -px * sin_r + pz * cos_r;
 
     return p;
 }

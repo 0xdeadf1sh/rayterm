@@ -19,8 +19,10 @@
 #define GAMMA_INV   (1.0f / 2.2f)
 #define BUFFER_LEN(BUFFER) (sizeof(BUFFER) / sizeof((BUFFER)[0]))
 #define CAMERA_SPEED 0.25f
-#define GAMEPAD_DEADZONE 0
+#define CAMERA_SENSITIVITY 0.1f
+#define GAMEPAD_DEADZONE 1000
 #define POINT_LIGHT_RADIUS 10.0f
+#define PI 3.1415926f
 
 ///////////////////////////////////////////////////////////////////////////
 static float compute_gamma(float x, float gamma)
@@ -46,6 +48,7 @@ typedef struct {
 ///////////////////////////////////////////////////////////////////////////
 enum rt_material_type {
     RT_MATERIAL_TYPE_EMISSIVE,
+    RT_MATERIAL_TYPE_LAMBERTIAN,
     RT_MATERIAL_TYPE_DIELECTRIC,
     RT_MATERIAL_TYPE_METALLIC,
 };
@@ -197,7 +200,7 @@ static bool rt_sphere_hit(rt_sphere_t sphere,
 
     info->t = root_chosen;
     info->position = rt_ray_at(ray, root_chosen);
-    info->normal = rt_vec3_div_scalar(rt_vec3_sub(info->position, sphere.center), sphere.radius);
+    info->normal = rt_vec3_norm(rt_vec3_div_scalar(rt_vec3_sub(info->position, sphere.center), sphere.radius));
     info->is_front_facing = rt_vec3_dot(info->normal, ray.dir) < 0.0f;
     info->sphere_radius = sphere.radius;
     return true;
@@ -258,7 +261,6 @@ static rt_vec3_t compute_color(rt_ray_t ray,
                                                                                material,
                                                                                point_light,
                                                                                &closest_hit_info);
-
         if (RT_MATERIAL_TYPE_METALLIC == material->type) {
             rt_vec3_t reflected_ray_dir = rt_vec3_reflect(ray.dir, closest_hit_info.normal);
             reflected_ray_dir = rt_vec3_norm(reflected_ray_dir);
@@ -267,9 +269,29 @@ static rt_vec3_t compute_color(rt_ray_t ray,
             ray.org = closest_hit_info.position;
 
             rt_vec3_t reflected_color = compute_color(ray, models, model_count, point_light, depth - 1);
-            return rt_vec3_mul(reflected_color, fragment_output);
+            return reflected_color;
         }
-        else if (is_in_shadow) {
+        // TODO: fix the broken dielectric code
+        /*
+        else if (RT_MATERIAL_TYPE_DIELECTRIC == material->type) {
+            float refract_ind = 1.5f;
+            if (!closest_hit_info.is_front_facing) {
+                refract_ind = 1.0f / refract_ind;
+            }
+
+            rt_vec3_t raydir = rt_vec3_norm(ray.dir);
+            rt_vec3_t refracted_ray_dir = rt_vec3_refract(raydir, closest_hit_info.normal, refract_ind);
+            refracted_ray_dir = rt_vec3_norm(refracted_ray_dir);
+
+            ray.dir = refracted_ray_dir;
+            ray.org = closest_hit_info.position;
+
+            rt_vec3_t refracted_color = compute_color(ray, models, model_count, point_light, depth - 1);
+            return rt_vec3_mul(refracted_color, fragment_output);
+        }
+        */
+
+        if (is_in_shadow) {
             return rt_vec3_mul_scalar(fragment_output, 0.1f);
         }
 
@@ -360,9 +382,6 @@ int main([[maybe_unused]] int argc, char** argv)
 
     // Camera
     float aspect = (float)cols / (float)(rows * 2);
-    float focal_length = 1.0f;
-    float viewport_height = 2.0f;
-    float viewport_width = viewport_height * aspect;
 
     rt_vec3_t camera_center = {
         .x = 0.0f,
@@ -370,26 +389,29 @@ int main([[maybe_unused]] int argc, char** argv)
         .z = 0.0f,
     };
 
-    rt_vec3_t viewport_u = {
-        .x = viewport_width,
-        .y = 0.0f,
-        .z = 0.0f,
-    };
-
-    rt_vec3_t viewport_v = {
+    rt_vec3_t camera_dir = {
         .x = 0.0f,
-        .y = -viewport_height,
+        .y = 0.0f,
+        .z = 1.0f,
+    };
+
+    rt_vec3_t camera_up = {
+        .x = 0.0f,
+        .y = 1.0f,
         .z = 0.0f,
     };
 
-    rt_vec3_t pixel_delta_u = rt_vec3_div_scalar(viewport_u, (float)cols);
-    rt_vec3_t pixel_delta_v = rt_vec3_div_scalar(viewport_v, (float)rows);
-    rt_vec3_t pixel_delta_diag = rt_vec3_mul_scalar(rt_vec3_add(pixel_delta_u, pixel_delta_v), 0.5f);
-
-    rt_vec3_t viewport_u_half = rt_vec3_mul_scalar(viewport_u, 0.5f);
-    rt_vec3_t viewport_v_half = rt_vec3_mul_scalar(viewport_v, 0.5f);
+    float camera_fovy = PI * 0.5f;
 
     rt_model_t models[6];
+
+    rt_vec3_t colors[] = {
+        { 1.0f, 0.5f, 0.5f },
+        { 0.5f, 1.0f, 0.5f },
+        { 0.5f, 0.5f, 1.0f },
+        { 0.25f, 0.5f, 0.9f }
+    };
+
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
             const float sphere_radius = 3.0f;
@@ -397,11 +419,12 @@ int main([[maybe_unused]] int argc, char** argv)
                                                                       -2.0f,
                                                                       -(float)j * 10.0f - 5.0f),
                                                         sphere_radius);
-            rt_vec3_t diffuse_color = rt_vec3_create(0.25f, 0.5f, 1.0f);
+
+            rt_vec3_t diffuse_color = colors[i * 2 + j];
             rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
 
-            enum rt_material_type material_type_choice = RT_MATERIAL_TYPE_DIELECTRIC;
-            if (i == 0 && j == 0) {
+            enum rt_material_type material_type_choice = RT_MATERIAL_TYPE_LAMBERTIAN;
+            if (i == j) {
                 material_type_choice = RT_MATERIAL_TYPE_METALLIC;
             }
 
@@ -414,13 +437,13 @@ int main([[maybe_unused]] int argc, char** argv)
     models[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
     models[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
     models[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    models[4].material.type = RT_MATERIAL_TYPE_DIELECTRIC;
+    models[4].material.type = RT_MATERIAL_TYPE_LAMBERTIAN;
     models[4].fragment_shader = checkerboard_fragment_shader;
 
     rt_point_light_t point_light = {
         .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
         .diffuse = rt_vec3_create(0.25f, 0.5f, 1.0f),
-        .intensity = 3.0f,
+        .intensity = 2.0f,
     };
 
     // light sphere
@@ -438,7 +461,9 @@ int main([[maybe_unused]] int argc, char** argv)
     vopts.scaling = NCSCALE_NONE;
 
     bool is_running = true;
-    rt_vec3_t camera_velocity = {};
+    rt_vec3_t camera_velocity_forward = {};
+    rt_vec3_t camera_velocity_strafe = {};
+    rt_vec3_t camera_rotation = {};
 
     float last_time = 0.0f;
     float total_time = 0.0f;
@@ -475,20 +500,29 @@ int main([[maybe_unused]] int argc, char** argv)
                 case SDL_EVENT_GAMEPAD_BUTTON_UP:
                     break;
                 case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-                    int32_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
-                    if (rightY < -GAMEPAD_DEADZONE || rightY > GAMEPAD_DEADZONE) {
-                        camera_velocity.z = CAMERA_SPEED * ((float)rightY / 32768.0f);
+                    int leftX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
+                    if (leftX < -GAMEPAD_DEADZONE || leftX > GAMEPAD_DEADZONE) {
+                        camera_rotation.y = -(float)leftX / 32768.0f * CAMERA_SENSITIVITY;
                     }
                     else {
-                        camera_velocity.z = 0.0f;
+                        camera_rotation.y = 0.0f;
+                    }
+
+                    int32_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
+                    if (rightY < -GAMEPAD_DEADZONE || rightY > GAMEPAD_DEADZONE) {
+                        camera_velocity_forward = rt_vec3_mul_scalar(camera_dir, ((float)rightY / 32768.0f));
+                    }
+                    else {
+                        camera_velocity_forward = rt_vec3_create(0.0f, 0.0f, 0.0f);
                     }
 
                     int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
                     if (rightX < -GAMEPAD_DEADZONE || rightX > GAMEPAD_DEADZONE) {
-                        camera_velocity.x = CAMERA_SPEED * ((float)rightX / 32768.0f);
+                        rt_vec3_t strafe = rt_vec3_norm(rt_vec3_cross(camera_up, camera_dir));
+                        camera_velocity_strafe = rt_vec3_mul_scalar(strafe, ((float)rightX / 32768.0f));
                     }
                     else {
-                        camera_velocity.x = 0.0f;
+                        camera_velocity_strafe = rt_vec3_create(0.0f, 0.0f, 0.0f);
                     }
                     break;
                 default:
@@ -496,9 +530,36 @@ int main([[maybe_unused]] int argc, char** argv)
             }
         }
 
-        camera_center = rt_vec3_add(camera_center, rt_vec3_mul_scalar(camera_velocity, delta_time * 0.05f));
+        camera_dir = rt_vec3_rotate_y(camera_dir, camera_rotation.y);
 
-        rt_vec3_t viewport_upper_left = rt_vec3_sub(camera_center, rt_vec3_create(0.0f, 0.0f, focal_length));
+        rt_vec3_t camera_look_at = rt_vec3_sub(camera_center, camera_dir);
+        float focal_length = rt_vec3_dist(camera_center, camera_look_at);
+        float camera_h = tanf(camera_fovy * 0.5f);
+        float viewport_height = 2.0f * camera_h * focal_length;
+        float viewport_width = viewport_height * aspect;
+
+        rt_vec3_t camera_w = rt_vec3_norm(rt_vec3_sub(camera_center, camera_look_at));
+        rt_vec3_t camera_u = rt_vec3_norm(rt_vec3_cross(camera_up, camera_w));
+        rt_vec3_t camera_v = rt_vec3_norm(rt_vec3_cross(camera_w, camera_u));
+
+        rt_vec3_t viewport_u = rt_vec3_mul_scalar(camera_u, viewport_width);
+        rt_vec3_t viewport_v = rt_vec3_mul_scalar(rt_vec3_negate(camera_v), viewport_height);
+
+        rt_vec3_t pixel_delta_u = rt_vec3_div_scalar(viewport_u, (float)cols);
+        rt_vec3_t pixel_delta_v = rt_vec3_div_scalar(viewport_v, (float)rows);
+        rt_vec3_t pixel_delta_diag = rt_vec3_mul_scalar(rt_vec3_add(pixel_delta_u, pixel_delta_v), 0.5f);
+
+        rt_vec3_t viewport_u_half = rt_vec3_mul_scalar(viewport_u, 0.5f);
+        rt_vec3_t viewport_v_half = rt_vec3_mul_scalar(viewport_v, 0.5f);
+
+        rt_vec3_t camera_total_velocity = rt_vec3_add(camera_velocity_forward, camera_velocity_strafe);
+        float camera_total_velocity_len = rt_vec3_len(camera_total_velocity);
+        if (camera_total_velocity_len > 1.0f) {
+            camera_total_velocity = rt_vec3_div_scalar(camera_total_velocity, camera_total_velocity_len);
+        }
+        camera_center = rt_vec3_add(camera_center, rt_vec3_mul_scalar(camera_total_velocity, CAMERA_SPEED * delta_time * 0.05f));
+
+        rt_vec3_t viewport_upper_left = rt_vec3_sub(camera_center, rt_vec3_mul_scalar(camera_w, focal_length));
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_u_half);
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_v_half);
 
