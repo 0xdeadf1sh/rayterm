@@ -217,16 +217,6 @@ static inline rt_vec3_t rt_vec3_lerp(rt_vec3_t p, rt_vec3_t q, float k)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-static inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
-{
-    p.x = (p.x < k) ? k : p.x;
-    p.y = (p.y < k) ? k : p.y;
-    p.z = (p.z < k) ? k : p.z;
-
-    return p;
-}
-
-///////////////////////////////////////////////////////////////////////////
 static inline rt_vec3_t rt_vec3_rand(uint32_t seed)
 {
     srand(seed);
@@ -235,6 +225,36 @@ static inline rt_vec3_t rt_vec3_rand(uint32_t seed)
         .y = (float)(rand() % RAND_MAX),
         .z = (float)(rand() % RAND_MAX),
     };
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_max(rt_vec3_t p, float k)
+{
+    p.x = fmaxf(p.x, k);
+    p.y = fmaxf(p.y, k);
+    p.z = fmaxf(p.z, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_min(rt_vec3_t p, float k)
+{
+    p.x = fminf(p.x, k);
+    p.y = fminf(p.y, k);
+    p.z = fminf(p.z, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static inline rt_vec3_t rt_vec3_clamp(rt_vec3_t p, float min, float max)
+{
+    p.x = fminf(max, fmaxf(p.x, min));
+    p.y = fminf(max, fmaxf(p.y, min));
+    p.z = fminf(max, fmaxf(p.z, min));
 
     return p;
 }

@@ -29,19 +29,41 @@ static float compute_gamma(float x, float gamma)
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
-    rt_vec3_t center;
-    float radius;
-}
-rt_sphere_t;
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct {
     rt_vec3_t position;
     rt_vec3_t normal;
     float t;
     float sphere_radius;
     bool is_front_facing;
 } rt_hit_info;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_vec3_t center;
+    float radius;
+} rt_sphere_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_vec3_t ambient;
+    rt_vec3_t diffuse;
+} rt_phong_material_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_vec3_t position;
+    rt_vec3_t diffuse;
+    float intensity;
+} rt_point_light_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct {
+    rt_sphere_t sphere;
+    rt_phong_material_t material;
+    rt_vec3_t (*fragment_shader)(const rt_sphere_t* sphere,
+                                 const rt_phong_material_t* material, 
+                                 const rt_point_light_t* light,
+                                 const rt_hit_info* hit_info);
+} rt_model_t;
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
@@ -55,13 +77,78 @@ static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-static bool hit_sphere(rt_sphere_t sphere,
-                       rt_ray_t ray,
-                       float t_min,
-                       float t_max,
-                       rt_hit_info* info)
+static rt_phong_material_t rt_phong_material_create(rt_vec3_t ambient,
+                                                    rt_vec3_t diffuse)
 {
-    assert(info && "hit_sphere: rt_hit_info* is NULL!");
+    rt_phong_material_t material = {
+        .ambient = ambient,
+        .diffuse = diffuse,
+    };
+
+    return material;
+}
+
+///////////////////////////////////////////////////////////////////////////
+static rt_vec3_t diffuse_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
+                                         const rt_phong_material_t* material,
+                                         const rt_point_light_t* light,
+                                         const rt_hit_info* hit_info)
+{
+    assert(sphere && "diffuse_fragment_shader: sphere is NULL");
+    assert(material && "diffuse_fragment_shader: material is NULL");
+    assert(light && "diffuse_fragment_shader: light is NULL");
+    assert(hit_info && "diffuse_fragment_shader: hit_info is NULL");
+
+    rt_vec3_t ambient = material->ambient;
+
+    rt_vec3_t light_dir = rt_vec3_norm(rt_vec3_sub(light->position, hit_info->position));
+    rt_vec3_t diffuse_color = material->diffuse;
+    float diff = fmaxf(rt_vec3_dot(light_dir, hit_info->normal), 0.0f);
+    rt_vec3_t diffuse = rt_vec3_mul_scalar(diffuse_color, diff);
+
+    rt_vec3_t final_color = rt_vec3_add(ambient, diffuse);
+    return rt_vec3_clamp(final_color, 0.0f, 1.0f);
+}
+
+///////////////////////////////////////////////////////////////////////////
+static rt_vec3_t checkerboard_fragment_shader([[maybe_unused]] const rt_sphere_t* sphere,
+                                              const rt_phong_material_t* material,
+                                              const rt_point_light_t* light,
+                                              const rt_hit_info* hit_info)
+{
+    assert(sphere && "diffuse_fragment_shader: sphere is NULL");
+    assert(material && "diffuse_fragment_shader: material is NULL");
+    assert(light && "diffuse_fragment_shader: light is NULL");
+    assert(hit_info && "diffuse_fragment_shader: hit_info is NULL");
+
+    uint32_t quant_x = (uint32_t)(ceilf(hit_info->position.x * 0.5f));
+    uint32_t quant_z = (uint32_t)(ceilf(hit_info->position.z * 0.5f));
+
+    rt_vec3_t color_0 = rt_vec3_create(1.00f, 0.44f, 0.81f);
+    rt_vec3_t color_1 = rt_vec3_create(0.00f, 0.80f, 1.00f); 
+
+    rt_vec3_t ambient = material->ambient;
+
+    rt_vec3_t light_dir = rt_vec3_norm(rt_vec3_sub(light->position, hit_info->position));
+    rt_vec3_t diffuse_color = material->diffuse;
+    float diff = fmaxf(rt_vec3_dot(light_dir, hit_info->normal), 0.0f);
+    rt_vec3_t diffuse = rt_vec3_mul_scalar(diffuse_color, diff);
+
+    rt_vec3_t cumulative = rt_vec3_clamp(rt_vec3_add(ambient, diffuse), 0.0f, 1.0f);
+
+    uint32_t quant = quant_x + quant_z;
+    return (quant & 1) ? rt_vec3_mul(cumulative, color_0)
+                       : rt_vec3_mul(cumulative, color_1);
+}
+
+///////////////////////////////////////////////////////////////////////////
+static bool rt_sphere_hit(rt_sphere_t sphere,
+                          rt_ray_t ray,
+                          float t_min,
+                          float t_max,
+                          rt_hit_info* info)
+{
+    assert(info && "rt_sphere_hit: rt_hit_info* is NULL!");
 
     rt_vec3_t oc = rt_vec3_sub(sphere.center, ray.org);
     float a = rt_vec3_sqrlen(ray.dir);
@@ -95,49 +182,40 @@ static bool hit_sphere(rt_sphere_t sphere,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-static rt_vec3_t compute_color(rt_ray_t ray)
+static rt_vec3_t compute_color(rt_ray_t ray,
+                               const rt_model_t* models,
+                               uint32_t modelCount,
+                               const rt_point_light_t* point_light)
 {
-    rt_sphere_t spheres[5];
-    for (uint32_t i = 0; i < 2; ++i) {
-        for (uint32_t j = 0; j < 2; ++j) {
-            const float sphere_radius = 2.0f;
-            spheres[i * 2 + j] = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
-                                                                -2.0f,
-                                                                -(float)j * 10.0f - 5.0f),
-                                                  sphere_radius);
-        }
-    }
-    spheres[4] = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
-
     const float t_min = 1.0f;
     const float t_max = 1000.0f;
 
     rt_hit_info closest_hit_info = {};
+    uint32_t closest_hint_index = {};
 
     bool has_hit = false;
-    for (uint32_t i = 0; i < BUFFER_LEN(spheres); ++i) {
+    for (uint32_t i = 0; i < modelCount; ++i) {
         rt_hit_info hit_info = {};
-        if (hit_sphere(spheres[i], ray, t_min, t_max, &hit_info)) {
+        if (rt_sphere_hit(models[i].sphere, ray, t_min, t_max, &hit_info)) {
             if (!hit_info.is_front_facing) {
                 continue;
             }
             if (!has_hit || hit_info.t < closest_hit_info.t) {
                 has_hit = true;
                 closest_hit_info = hit_info;
+                closest_hint_index = i;
             }
         }
     }
 
     if (has_hit) {
-        if (closest_hit_info.sphere_radius > 100.0f) {
-            uint32_t quant_x = (uint32_t)(ceilf(closest_hit_info.position.x * 0.5f));
-            uint32_t quant_z = (uint32_t)(ceilf(closest_hit_info.position.z * 0.5f));
-            uint32_t quant = quant_x + quant_z;
-            return (quant & 1) ? rt_vec3_create(1.00f, 0.44f, 0.81f)
-                               : rt_vec3_create(0.00f, 0.80f, 1.00f);
-        }
-        rt_vec3_t final_color = rt_vec3_mul_scalar(rt_vec3_add_scalar(closest_hit_info.normal, 1.0f), 0.5f);
-        return final_color;
+        const rt_sphere_t* sphere = &models[closest_hint_index].sphere;
+        const rt_phong_material_t* material = &models[closest_hint_index].material;
+
+        return models[closest_hint_index].fragment_shader(sphere,
+                                                          material,
+                                                          point_light,
+                                                          &closest_hit_info);
     }
 
     rt_vec3_t ray_dir_norm = rt_vec3_norm(ray.dir);
@@ -210,6 +288,9 @@ int main([[maybe_unused]] int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    rows *= 2;
+    cols *= 2;
+
     size_t pixelbuffer_size = rows * cols * sizeof(uint32_t);
     uint32_t* rgb = malloc(pixelbuffer_size);
     if (!rgb) {
@@ -249,15 +330,40 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_vec3_t viewport_u_half = rt_vec3_mul_scalar(viewport_u, 0.5f);
     rt_vec3_t viewport_v_half = rt_vec3_mul_scalar(viewport_v, 0.5f);
 
+    rt_model_t models[5];
+    for (uint32_t i = 0; i < 2; ++i) {
+        for (uint32_t j = 0; j < 2; ++j) {
+            const float sphere_radius = 2.0f;
+            models[i * 2 + j].sphere = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
+                                                                      -2.0f,
+                                                                      -(float)j * 10.0f - 5.0f),
+                                                        sphere_radius);
+            rt_vec3_t diffuse_color = rt_vec3_create(0.25f, 0.5f, 1.0f);
+            rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
+            models[i * 2 + j].material = rt_phong_material_create(ambient_color, diffuse_color);
+            models[i * 2 + j].fragment_shader = &diffuse_fragment_shader;
+        }
+    }
+    models[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
+    models[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    models[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    models[4].fragment_shader = &checkerboard_fragment_shader;
+
     struct ncvisual_options vopts = {};
     vopts.n = nstd;
     vopts.leny = rows;
     vopts.lenx = cols;
-    vopts.blitter = NCBLIT_1x1;
+    vopts.blitter = NCBLIT_2x2;
     vopts.scaling = NCSCALE_NONE;
 
     bool is_running = true;
     rt_vec3_t camera_velocity = {};
+
+    rt_point_light_t point_light = {
+        .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
+        .diffuse = rt_vec3_create(1.0f, 0.0f, 1.0f),
+        .intensity = 1.0f,
+    };
 
     while (is_running) {
         struct ncinput input = {};
@@ -328,7 +434,7 @@ int main([[maybe_unused]] int argc, char** argv)
                     .org = camera_center,
                 };
 
-                rt_vec3_t pixel_color = compute_color(r);
+                rt_vec3_t pixel_color = compute_color(r, models, BUFFER_LEN(models), &point_light);
                 pixel_color = rt_vec3_apply_2(pixel_color, compute_gamma, GAMMA_INV);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
             }
