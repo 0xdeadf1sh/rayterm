@@ -1,5 +1,22 @@
+// rayterm: ray-tracer for the terminal
+// Copyright (C) 2026 0xdeadf1.sh
+// 
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+// 
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// 
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 #include "rt_vec3.h"
 #include "rt_ray.h"
+#include "rt_defines.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_gamepad.h>
@@ -13,16 +30,6 @@
 #include <unistd.h>
 #include <time.h>
 #include <assert.h>
-
-///////////////////////////////////////////////////////////////////////////
-#define GAMMA       2.2f
-#define GAMMA_INV   (1.0f / 2.2f)
-#define BUFFER_LEN(BUFFER) (sizeof(BUFFER) / sizeof((BUFFER)[0]))
-#define CAMERA_SPEED 0.25f
-#define CAMERA_SENSITIVITY 0.1f
-#define GAMEPAD_DEADZONE 1000
-#define POINT_LIGHT_RADIUS 10.0f
-#define PI 3.1415926f
 
 ///////////////////////////////////////////////////////////////////////////
 static float compute_gamma(float x, float gamma)
@@ -246,7 +253,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
         };
         for (uint32_t i = 0; i < model_count; ++i) {
             rt_hit_info hit_info = {};
-            if (rt_sphere_hit(models[i].sphere, new_ray, t_min, t_max, &hit_info)) {
+            if (i != closest_hint_index && rt_sphere_hit(models[i].sphere, new_ray, t_min, t_max, &hit_info)) {
                 if (!is_in_shadow && models[i].material.type != RT_MATERIAL_TYPE_EMISSIVE) {
                     is_in_shadow = true;
                     break;
@@ -401,7 +408,7 @@ int main([[maybe_unused]] int argc, char** argv)
         .z = 0.0f,
     };
 
-    float camera_fovy = PI * 0.5f;
+    float camera_fovy = RT_PI * 0.5f;
 
     rt_model_t models[6];
 
@@ -487,6 +494,11 @@ int main([[maybe_unused]] int argc, char** argv)
         }
 
         SDL_Event event = {};
+        int32_t gamepad_deadzone = 1000;
+        float camera_sensitivity = 0.1f;
+        float camera_speed = 0.25f;
+        float point_light_radius = 10.0f;
+
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
                 case SDL_EVENT_QUIT:
@@ -501,15 +513,15 @@ int main([[maybe_unused]] int argc, char** argv)
                     break;
                 case SDL_EVENT_GAMEPAD_AXIS_MOTION:
                     int leftX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
-                    if (leftX < -GAMEPAD_DEADZONE || leftX > GAMEPAD_DEADZONE) {
-                        camera_rotation.y = -(float)leftX / 32768.0f * CAMERA_SENSITIVITY;
+                    if (leftX < -gamepad_deadzone || leftX > gamepad_deadzone) {
+                        camera_rotation.y = -(float)leftX / 32768.0f * camera_sensitivity;
                     }
                     else {
                         camera_rotation.y = 0.0f;
                     }
 
                     int32_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
-                    if (rightY < -GAMEPAD_DEADZONE || rightY > GAMEPAD_DEADZONE) {
+                    if (rightY < -gamepad_deadzone || rightY > gamepad_deadzone) {
                         camera_velocity_forward = rt_vec3_mul_scalar(camera_dir, ((float)rightY / 32768.0f));
                     }
                     else {
@@ -517,7 +529,7 @@ int main([[maybe_unused]] int argc, char** argv)
                     }
 
                     int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
-                    if (rightX < -GAMEPAD_DEADZONE || rightX > GAMEPAD_DEADZONE) {
+                    if (rightX < -gamepad_deadzone || rightX > gamepad_deadzone) {
                         rt_vec3_t strafe = rt_vec3_norm(rt_vec3_cross(camera_up, camera_dir));
                         camera_velocity_strafe = rt_vec3_mul_scalar(strafe, ((float)rightX / 32768.0f));
                     }
@@ -557,7 +569,7 @@ int main([[maybe_unused]] int argc, char** argv)
         if (camera_total_velocity_len > 1.0f) {
             camera_total_velocity = rt_vec3_div_scalar(camera_total_velocity, camera_total_velocity_len);
         }
-        camera_center = rt_vec3_add(camera_center, rt_vec3_mul_scalar(camera_total_velocity, CAMERA_SPEED * delta_time * 0.05f));
+        camera_center = rt_vec3_add(camera_center, rt_vec3_mul_scalar(camera_total_velocity, camera_speed * delta_time * 0.05f));
 
         rt_vec3_t viewport_upper_left = rt_vec3_sub(camera_center, rt_vec3_mul_scalar(camera_w, focal_length));
         viewport_upper_left = rt_vec3_sub(viewport_upper_left, viewport_u_half);
@@ -565,8 +577,8 @@ int main([[maybe_unused]] int argc, char** argv)
 
         rt_vec3_t pixel00_loc = rt_vec3_add(viewport_upper_left, pixel_delta_diag);
 
-        point_light.position.x = POINT_LIGHT_RADIUS * cosf(total_time);
-        point_light.position.z = POINT_LIGHT_RADIUS * sinf(total_time) - 5.0f;
+        point_light.position.x = point_light_radius * cosf(total_time);
+        point_light.position.z = point_light_radius * sinf(total_time) - 5.0f;
         models[5].sphere.center = point_light.position;
 
         for (uint32_t row = 0; row < rows; ++row) {
@@ -584,8 +596,8 @@ int main([[maybe_unused]] int argc, char** argv)
                     .org = camera_center,
                 };
 
-                rt_vec3_t pixel_color = compute_color(r, models, BUFFER_LEN(models), &point_light, 3);
-                pixel_color = rt_vec3_apply_2(pixel_color, compute_gamma, GAMMA_INV);
+                rt_vec3_t pixel_color = compute_color(r, models, RT_BUFFER_LEN(models), &point_light, 3);
+                pixel_color = rt_vec3_apply_2(pixel_color, compute_gamma, 1.0f / 2.2f);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
             }
         }
