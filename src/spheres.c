@@ -14,13 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#include "rt_vec3.h"
-#include "rt_ray.h"
-#include "rt_defines.h"
+#include "rayterm.h"
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_gamepad.h>
-#include <SDL3/SDL_init.h>
 #include <notcurses/notcurses.h>
 
 #include <stdio.h>
@@ -39,33 +35,9 @@ static float compute_gamma(float x, float gamma)
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
-    rt_vec3_t position;
-    rt_vec3_t normal;
-    float t;
-    float sphere_radius;
-    bool is_front_facing;
-} rt_hit_info;
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct {
     rt_vec3_t center;
     float radius;
 } rt_sphere_t;
-
-///////////////////////////////////////////////////////////////////////////
-enum rt_material_type {
-    RT_MATERIAL_TYPE_EMISSIVE,
-    RT_MATERIAL_TYPE_LAMBERTIAN,
-    RT_MATERIAL_TYPE_DIELECTRIC,
-    RT_MATERIAL_TYPE_METALLIC,
-};
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct {
-    enum rt_material_type type;
-    rt_vec3_t ambient;
-    rt_vec3_t diffuse;
-} rt_material_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct {
@@ -82,7 +54,7 @@ typedef struct {
                                  const rt_material_t* material, 
                                  const rt_point_light_t* light,
                                  const rt_hit_info* hit_info);
-} rt_model_t;
+} rt_mesh_t;
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
@@ -93,20 +65,6 @@ static rt_sphere_t rt_sphere_create(rt_vec3_t position, float radius)
         .center = position,
     };
     return sphere;
-}
-
-///////////////////////////////////////////////////////////////////////////
-static rt_material_t rt_material_create(enum rt_material_type type,
-                                        rt_vec3_t ambient,
-                                        rt_vec3_t diffuse)
-{
-    rt_material_t material = {
-        .type = type,
-        .ambient = ambient,
-        .diffuse = diffuse,
-    };
-
-    return material;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -126,6 +84,7 @@ static rt_vec3_t diffuse_fragment_shader([[maybe_unused]] const rt_sphere_t* sph
     rt_vec3_t light_dir = rt_vec3_norm(rt_vec3_sub(light->position, hit_info->position));
     rt_vec3_t diffuse_color = rt_vec3_mul(material->diffuse, light_diffuse);
     float diff = fmaxf(rt_vec3_dot(light_dir, hit_info->normal), 0.0f);
+
     rt_vec3_t diffuse = rt_vec3_mul_scalar(diffuse_color, diff);
 
     rt_vec3_t final_color = rt_vec3_add(ambient, diffuse);
@@ -215,7 +174,7 @@ static bool rt_sphere_hit(rt_sphere_t sphere,
 
 ///////////////////////////////////////////////////////////////////////////
 static rt_vec3_t compute_color(rt_ray_t ray,
-                               const rt_model_t* models,
+                               const rt_mesh_t* meshes,
                                uint32_t model_count,
                                const rt_point_light_t* point_light,
                                uint32_t depth)
@@ -233,7 +192,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
     bool has_hit = false;
     for (uint32_t i = 0; i < model_count; ++i) {
         rt_hit_info hit_info = {};
-        if (rt_sphere_hit(models[i].sphere, ray, t_min, t_max, &hit_info)) {
+        if (rt_sphere_hit(meshes[i].sphere, ray, t_min, t_max, &hit_info)) {
             if (!hit_info.is_front_facing) {
                 continue;
             }
@@ -253,18 +212,18 @@ static rt_vec3_t compute_color(rt_ray_t ray,
         };
         for (uint32_t i = 0; i < model_count; ++i) {
             rt_hit_info hit_info = {};
-            if (i != closest_hint_index && rt_sphere_hit(models[i].sphere, new_ray, t_min, t_max, &hit_info)) {
-                if (!is_in_shadow && models[i].material.type != RT_MATERIAL_TYPE_EMISSIVE) {
+            if (i != closest_hint_index && rt_sphere_hit(meshes[i].sphere, new_ray, t_min, t_max, &hit_info)) {
+                if (!is_in_shadow && meshes[i].material.type != RT_MATERIAL_TYPE_EMISSIVE) {
                     is_in_shadow = true;
                     break;
                 }
             }
         }
 
-        const rt_sphere_t* sphere = &models[closest_hint_index].sphere;
-        const rt_material_t* material = &models[closest_hint_index].material;
+        const rt_sphere_t* sphere = &meshes[closest_hint_index].sphere;
+        const rt_material_t* material = &meshes[closest_hint_index].material;
 
-        rt_vec3_t fragment_output = models[closest_hint_index].fragment_shader(sphere,
+        rt_vec3_t fragment_output = meshes[closest_hint_index].fragment_shader(sphere,
                                                                                material,
                                                                                point_light,
                                                                                &closest_hit_info);
@@ -275,7 +234,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
             ray.dir = reflected_ray_dir;
             ray.org = closest_hit_info.position;
 
-            rt_vec3_t reflected_color = compute_color(ray, models, model_count, point_light, depth - 1);
+            rt_vec3_t reflected_color = compute_color(ray, meshes, model_count, point_light, depth - 1);
             return reflected_color;
         }
         // TODO: fix the broken dielectric code
@@ -293,7 +252,7 @@ static rt_vec3_t compute_color(rt_ray_t ray,
             ray.dir = refracted_ray_dir;
             ray.org = closest_hit_info.position;
 
-            rt_vec3_t refracted_color = compute_color(ray, models, model_count, point_light, depth - 1);
+            rt_vec3_t refracted_color = compute_color(ray, meshes, model_count, point_light, depth - 1);
             return rt_vec3_mul(refracted_color, fragment_output);
         }
         */
@@ -410,7 +369,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
     float camera_fovy = RT_PI * 0.5f;
 
-    rt_model_t models[6];
+    rt_mesh_t meshes[6];
 
     rt_vec3_t colors[] = {
         { 1.0f, 0.5f, 0.5f },
@@ -422,7 +381,7 @@ int main([[maybe_unused]] int argc, char** argv)
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
             const float sphere_radius = 3.0f;
-            models[i * 2 + j].sphere = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
+            meshes[i * 2 + j].sphere = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
                                                                       -2.0f,
                                                                       -(float)j * 10.0f - 5.0f),
                                                         sphere_radius);
@@ -435,17 +394,17 @@ int main([[maybe_unused]] int argc, char** argv)
                 material_type_choice = RT_MATERIAL_TYPE_METALLIC;
             }
 
-            models[i * 2 + j].material = rt_material_create(material_type_choice, ambient_color, diffuse_color);
-            models[i * 2 + j].fragment_shader = diffuse_fragment_shader;
+            meshes[i * 2 + j].material = rt_material_create(material_type_choice, ambient_color, diffuse_color);
+            meshes[i * 2 + j].fragment_shader = diffuse_fragment_shader;
         }
     }
 
     // big sphere
-    models[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
-    models[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    models[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    models[4].material.type = RT_MATERIAL_TYPE_LAMBERTIAN;
-    models[4].fragment_shader = checkerboard_fragment_shader;
+    meshes[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
+    meshes[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    meshes[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    meshes[4].material.type = RT_MATERIAL_TYPE_LAMBERTIAN;
+    meshes[4].fragment_shader = checkerboard_fragment_shader;
 
     rt_point_light_t point_light = {
         .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
@@ -454,11 +413,11 @@ int main([[maybe_unused]] int argc, char** argv)
     };
 
     // light sphere
-    models[5].sphere = rt_sphere_create(point_light.position, 0.5f);
-    models[5].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    models[5].material.diffuse = point_light.diffuse;
-    models[5].material.type = RT_MATERIAL_TYPE_EMISSIVE;
-    models[5].fragment_shader = emissive_fragment_shader;
+    meshes[5].sphere = rt_sphere_create(point_light.position, 0.5f);
+    meshes[5].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
+    meshes[5].material.diffuse = point_light.diffuse;
+    meshes[5].material.type = RT_MATERIAL_TYPE_EMISSIVE;
+    meshes[5].fragment_shader = emissive_fragment_shader;
 
     struct ncvisual_options vopts = {};
     vopts.n = nstd;
@@ -466,6 +425,7 @@ int main([[maybe_unused]] int argc, char** argv)
     vopts.lenx = cols;
     vopts.blitter = NCBLIT_2x2;
     vopts.scaling = NCSCALE_NONE;
+    vopts.flags = NCVISUAL_OPTION_NODEGRADE;
 
     bool is_running = true;
     rt_vec3_t camera_velocity_forward = {};
@@ -579,7 +539,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
         point_light.position.x = point_light_radius * cosf(total_time);
         point_light.position.z = point_light_radius * sinf(total_time) - 5.0f;
-        models[5].sphere.center = point_light.position;
+        meshes[5].sphere.center = point_light.position;
 
         for (uint32_t row = 0; row < rows; ++row) {
 
@@ -596,7 +556,7 @@ int main([[maybe_unused]] int argc, char** argv)
                     .org = camera_center,
                 };
 
-                rt_vec3_t pixel_color = compute_color(r, models, RT_BUFFER_LEN(models), &point_light, 3);
+                rt_vec3_t pixel_color = compute_color(r, meshes, RT_BUFFER_LEN(meshes), &point_light, 3);
                 pixel_color = rt_vec3_apply_2(pixel_color, compute_gamma, 1.0f / 2.2f);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
             }
