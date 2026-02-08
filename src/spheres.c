@@ -28,106 +28,6 @@
 #include <assert.h>
 
 ///////////////////////////////////////////////////////////////////////////
-static rt_vec3_t compute_color(rt_ray_t ray,
-                               const rt_mesh_t* meshes,
-                               uint32_t model_count,
-                               const rt_point_light_t* point_light,
-                               uint32_t depth)
-{
-    if (!depth) {
-        goto compute_sky_color;
-    }
-
-    const float t_min = 1.0f;
-    const float t_max = 1000.0f;
-
-    rt_hit_info closest_hit_info = {};
-    uint32_t closest_hint_index = {};
-
-    bool has_hit = false;
-    for (uint32_t i = 0; i < model_count; ++i) {
-        rt_hit_info hit_info = {};
-        if (rt_sphere_hit(meshes[i].sphere, ray, t_min, t_max, &hit_info)) {
-            if (!hit_info.is_front_facing) {
-                continue;
-            }
-            else if (!has_hit || hit_info.t < closest_hit_info.t) {
-                has_hit = true;
-                closest_hit_info = hit_info;
-                closest_hint_index = i;
-            }
-        }
-    }
-
-    if (has_hit) {
-        bool is_in_shadow = false;
-        rt_ray_t new_ray = {
-            .dir = rt_vec3_norm(rt_vec3_sub(point_light->position, closest_hit_info.position)),
-            .org = closest_hit_info.position,
-        };
-        for (uint32_t i = 0; i < model_count; ++i) {
-            rt_hit_info hit_info = {};
-            if (i != closest_hint_index && rt_sphere_hit(meshes[i].sphere, new_ray, t_min, t_max, &hit_info)) {
-                if (!is_in_shadow && meshes[i].material.type != RT_MATERIAL_TYPE_EMISSIVE) {
-                    is_in_shadow = true;
-                    break;
-                }
-            }
-        }
-
-        const rt_sphere_t* sphere = &meshes[closest_hint_index].sphere;
-        const rt_material_t* material = &meshes[closest_hint_index].material;
-
-        rt_vec3_t fragment_output = meshes[closest_hint_index].fragment_shader(sphere,
-                                                                               material,
-                                                                               point_light,
-                                                                               &closest_hit_info);
-        if (RT_MATERIAL_TYPE_METALLIC == material->type) {
-            rt_vec3_t reflected_ray_dir = rt_vec3_reflect(ray.dir, closest_hit_info.normal);
-            reflected_ray_dir = rt_vec3_norm(reflected_ray_dir);
-
-            ray.dir = reflected_ray_dir;
-            ray.org = closest_hit_info.position;
-
-            rt_vec3_t reflected_color = compute_color(ray, meshes, model_count, point_light, depth - 1);
-            return reflected_color;
-        }
-        // TODO: fix the broken dielectric code
-        /*
-        else if (RT_MATERIAL_TYPE_DIELECTRIC == material->type) {
-            float refract_ind = 1.5f;
-            if (!closest_hit_info.is_front_facing) {
-                refract_ind = 1.0f / refract_ind;
-            }
-
-            rt_vec3_t raydir = rt_vec3_norm(ray.dir);
-            rt_vec3_t refracted_ray_dir = rt_vec3_refract(raydir, closest_hit_info.normal, refract_ind);
-            refracted_ray_dir = rt_vec3_norm(refracted_ray_dir);
-
-            ray.dir = refracted_ray_dir;
-            ray.org = closest_hit_info.position;
-
-            rt_vec3_t refracted_color = compute_color(ray, meshes, model_count, point_light, depth - 1);
-            return rt_vec3_mul(refracted_color, fragment_output);
-        }
-        */
-
-        if (is_in_shadow) {
-            return rt_vec3_mul_scalar(fragment_output, 0.1f);
-        }
-
-        return fragment_output;
-    }
-
-compute_sky_color:
-    rt_vec3_t ray_dir_norm = rt_vec3_norm(ray.dir);
-    rt_vec3_t white_color = { 1.0f, 0.2f, 0.2f };
-    rt_vec3_t blue_color = { 0.0f, 0.0f, 1.0f };
-    float k = (ray_dir_norm.y + 1.0f) * 0.5f;
-    return rt_vec3_lerp(white_color, blue_color, k);
-}
-
-///////////////////////////////////////////////////////////////////////////
 static SDL_Gamepad* retrieveGamepad()
 {
     int32_t cnt = 0;
@@ -224,7 +124,13 @@ int main([[maybe_unused]] int argc, char** argv)
 
     float camera_fovy = RT_PI * 0.5f;
 
-    rt_mesh_t meshes[6];
+    rt_world_t world = {};
+
+    world.clear_color.x = 0.2f;
+    world.clear_color.y = 0.3f;
+    world.clear_color.z = 0.3f;
+
+    world.face_cull_mode = RT_FACE_CULL_BACK;
 
     rt_vec3_t colors[] = {
         { 1.0f, 0.5f, 0.5f },
@@ -233,33 +139,28 @@ int main([[maybe_unused]] int argc, char** argv)
         { 0.25f, 0.5f, 0.9f }
     };
 
+    const float sphere_radius = 3.0f;
     for (uint32_t i = 0; i < 2; ++i) {
         for (uint32_t j = 0; j < 2; ++j) {
-            const float sphere_radius = 3.0f;
-            meshes[i * 2 + j].sphere = rt_sphere_create(rt_vec3_create((float)i * 10.0f - 5.0f,
-                                                                      -2.0f,
-                                                                      -(float)j * 10.0f - 5.0f),
-                                                        sphere_radius);
+            uint32_t sphere_index = rt_world_push_sphere(&world);
+            RT_ASSERT_PUSH(sphere_index);
 
-            rt_vec3_t diffuse_color = colors[i * 2 + j];
-            rt_vec3_t ambient_color = rt_vec3_mul_scalar(diffuse_color, 0.1f);
+            rt_sphere_t* sphere = &world.spheres[sphere_index];
+            sphere->center.x = (float)i * 10.0f - 5.0f;
+            sphere->center.y = -2.0f;
+            sphere->center.z = -(float)j * 10.0f - 5.0f;
+            sphere->radius = sphere_radius;
 
-            enum rt_material_type material_type_choice = RT_MATERIAL_TYPE_LAMBERTIAN;
-            if (i == j) {
-                material_type_choice = RT_MATERIAL_TYPE_METALLIC;
-            }
+            uint32_t material_index = rt_world_push_diffuse_material(&world);
+            RT_ASSERT_PUSH(material_index);
+            rt_sphere_set_diffuse_material(&world, sphere_index, material_index);
 
-            meshes[i * 2 + j].material = rt_material_create(material_type_choice, ambient_color, diffuse_color);
-            meshes[i * 2 + j].fragment_shader = diffuse_fragment_shader;
+            rt_diffuse_material_t* material = &world.diffuse_materials[material_index];
+            material->ambient = rt_vec3_mul_scalar(colors[i * 2 + j], 0.1f);
+            material->diffuse = colors[i * 2 + j];
+            material->receives_shadows = true;
         }
     }
-
-    // big sphere
-    meshes[4].sphere = rt_sphere_create(rt_vec3_create(0.0f, -1005.5f, 0.0f), 1000.0f);
-    meshes[4].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    meshes[4].material.diffuse = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    meshes[4].material.type = RT_MATERIAL_TYPE_LAMBERTIAN;
-    meshes[4].fragment_shader = checkerboard_fragment_shader;
 
     rt_point_light_t point_light = {
         .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
@@ -431,7 +332,9 @@ int main([[maybe_unused]] int argc, char** argv)
 
         SDL_Delay(16);
     }
+
     free(rgb);
+    rt_world_free(&world);
     SDL_Quit();
     return notcurses_stop(nc);
 }
