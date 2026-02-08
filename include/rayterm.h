@@ -85,6 +85,12 @@ typedef struct
 rt_vec3_t;
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_create(float x, float y, float z)
+{
+    return (rt_vec3_t){x, y, z};
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
 {
     p.x += q.x;

@@ -104,32 +104,14 @@ int main([[maybe_unused]] int argc, char** argv)
     // Camera
     float aspect = (float)cols / (float)(rows * 2);
 
-    rt_vec3_t camera_center = {
-        .x = 0.0f,
-        .y = 0.0f,
-        .z = 0.0f,
-    };
-
-    rt_vec3_t camera_dir = {
-        .x = 0.0f,
-        .y = 0.0f,
-        .z = 1.0f,
-    };
-
-    rt_vec3_t camera_up = {
-        .x = 0.0f,
-        .y = 1.0f,
-        .z = 0.0f,
-    };
+    rt_vec3_t camera_center     = rt_vec3_create(0.0f, 0.0f, 0.0f);
+    rt_vec3_t camera_dir        = rt_vec3_create(0.0f, 0.0f, 1.0f);
+    rt_vec3_t camera_up         = rt_vec3_create(0.0f, 1.0f, 0.0f);
 
     float camera_fovy = RT_PI * 0.5f;
 
     rt_world_t world = {};
-
-    world.clear_color.x = 0.2f;
-    world.clear_color.y = 0.3f;
-    world.clear_color.z = 0.3f;
-
+    world.clear_color = rt_vec3_create(0.02f, 0.03f, 0.03f);
     world.face_cull_mode = RT_FACE_CULL_BACK;
 
     rt_vec3_t colors[] = {
@@ -166,37 +148,25 @@ int main([[maybe_unused]] int argc, char** argv)
     RT_ASSERT_PUSH(big_sphere_index);
 
     rt_sphere_t* big_sphere = &world.spheres[big_sphere_index];
-    big_sphere->center.x = 0.0f;
-    big_sphere->center.y = -500.0f;
-    big_sphere->center.z = 0.0f;
+    big_sphere->center = rt_vec3_create(0.0f, -500.0f, 0.0f);
     big_sphere->radius = 495.0f;
 
-    uint32_t big_sphere_material_index = rt_world_push_diffuse_material(&world);
+    uint32_t big_sphere_material_index = rt_world_push_checkerboard_material(&world);
     RT_ASSERT_PUSH(big_sphere_material_index);
-    rt_sphere_set_diffuse_material(&world, big_sphere_index, big_sphere_material_index);
+    rt_sphere_set_checkerboard_material(&world, big_sphere_index, big_sphere_material_index);
 
-    rt_diffuse_material_t* big_sphere_material = &world.diffuse_materials[big_sphere_material_index];
-    big_sphere_material->ambient.x = 0.01f;
-    big_sphere_material->ambient.y = 0.01f;
-    big_sphere_material->ambient.z = 0.01f;
-    big_sphere_material->diffuse.x = 0.7f;
-    big_sphere_material->diffuse.y = 0.8f;
-    big_sphere_material->diffuse.z = 0.9f;
+    rt_checkerboard_material_t* big_sphere_material = &world.checkerboard_materials[big_sphere_material_index];
+    big_sphere_material->color_0 = rt_vec3_create(0.1f, 0.1f, 0.1f);
+    big_sphere_material->color_1 = rt_vec3_create(0.9f, 0.9f, 0.9f);
     big_sphere_material->receives_shadows = true;
+    big_sphere_material->shadow_factor = 0.2f;
 
     uint32_t point_light_index = rt_world_push_point_light(&world);
     RT_ASSERT_PUSH(point_light_index);
 
     rt_point_light_t* point_light = &world.point_lights[point_light_index];
-
-    point_light->position.x = 0.0f;
-    point_light->position.y = 10.0f;
-    point_light->position.z = -5.0f;
-
-    point_light->color.x = 0.25f;
-    point_light->color.y = 0.5f;
-    point_light->color.z = 1.0f;
-
+    point_light->position = rt_vec3_create(0.0f, 10.0f, -5.0f);
+    point_light->color = rt_vec3_create(0.25f, 0.5f, 1.0f);
     point_light->intensity = 2.0f;
     point_light->casts_shadows = true;
 
@@ -266,9 +236,7 @@ int main([[maybe_unused]] int argc, char** argv)
                         camera_velocity_forward = rt_vec3_mul_scalar(camera_dir, ((float)rightY / 32768.0f));
                     }
                     else {
-                        camera_velocity_forward.x = 0.0f;
-                        camera_velocity_forward.y = 0.0f;
-                        camera_velocity_forward.z = 0.0f;
+                        camera_velocity_forward = rt_vec3_create(0.0f, 0.0f, 0.0f);
                     }
 
                     int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
@@ -277,9 +245,7 @@ int main([[maybe_unused]] int argc, char** argv)
                         camera_velocity_strafe = rt_vec3_mul_scalar(strafe, ((float)rightX / 32768.0f));
                     }
                     else {
-                        camera_velocity_strafe.x = 0.0f;
-                        camera_velocity_strafe.y = 0.0f;
-                        camera_velocity_strafe.z = 0.0f;
+                        camera_velocity_strafe = rt_vec3_create(0.0f, 0.0f, 0.0f);
                     }
                     break;
                 default:
