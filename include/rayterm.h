@@ -723,22 +723,15 @@ rt_world_t;
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_WORLD_POP(WORLD_NAME,                                            \
-                     BUFFER_TYPE,                                           \
-                     BUFFER_NAME,                                           \
                      COUNT_NAME)                                            \
 {                                                                           \
     uint32_t count          = WORLD_NAME->COUNT_NAME;                       \
                                                                             \
     if (!count) {                                                           \
-        return NULL;                                                        \
+        return;                                                             \
     }                                                                       \
                                                                             \
-    uint32_t last_index     = count - 1;                                    \
-                                                                            \
-    BUFFER_TYPE* popped     = &WORLD_NAME->BUFFER_NAME[last_index];         \
-                                                                            \
     WORLD_NAME->COUNT_NAME -= 1;                                            \
-    return popped;                                                          \
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -869,74 +862,58 @@ RT_API uint32_t rt_world_push_dielectric_material(rt_world_t* world)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_directional_light_t* rt_world_pop_directional_light(rt_world_t* world)
+RT_API void rt_world_pop_directional_light(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_directional_light_t,
-                 directional_lights,
                  directional_light_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_point_light_t* rt_world_pop_point_light(rt_world_t* world)
+RT_API void rt_world_pop_point_light(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_point_light_t,
-                 point_lights,
                  point_light_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_sphere_t* rt_world_pop_sphere(rt_world_t* world)
+RT_API void rt_world_pop_sphere(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_sphere_t,
-                 spheres,
                  sphere_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_emissive_material_t* rt_world_pop_emissive_material(rt_world_t* world)
+RT_API void rt_world_pop_emissive_material(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_emissive_material_t,
-                 emissive_materials,
                  emissive_material_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_checkerboard_material_t* rt_world_pop_checkerboard_material(rt_world_t* world)
+RT_API void rt_world_pop_checkerboard_material(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_checkerboard_material_t,
-                 checkerboard_materials,
                  checkerboard_material_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_diffuse_material_t* rt_world_pop_diffuse_material(rt_world_t* world)
+RT_API void rt_world_pop_diffuse_material(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_diffuse_material_t,
-                 diffuse_materials,
                  diffuse_material_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_metallic_material_t* rt_world_pop_metallic_material(rt_world_t* world)
+RT_API void rt_world_pop_metallic_material(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_metallic_material_t,
-                 metallic_materials,
                  metallic_material_count);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_dielectric_material_t* rt_world_pop_dielectric_material(rt_world_t* world)
+RT_API void rt_world_pop_dielectric_material(rt_world_t* world)
 {
     RT_WORLD_POP(world,
-                 rt_dielectric_material_t,
-                 dielectric_materials,
                  dielectric_material_count);
 }
 

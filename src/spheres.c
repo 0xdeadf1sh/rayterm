@@ -17,6 +17,7 @@
 #include "rayterm.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_keyboard.h>
 #include <notcurses/notcurses.h>
 
 #include <stdio.h>
@@ -33,6 +34,7 @@ static SDL_Gamepad* retrieveGamepad()
     int32_t cnt = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&cnt);
     if (!cnt) {
+        SDL_free(ids);
         return NULL;
     }
 
@@ -56,12 +58,6 @@ int main([[maybe_unused]] int argc, char** argv)
 {
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "SDL_Init() failed: %s\n", SDL_GetError());
-        return EXIT_FAILURE;
-    }
-
-    if (!SDL_HasGamepad()) {
-        fprintf(stderr, "No gamepads are connected!\n");
-        SDL_Quit();
         return EXIT_FAILURE;
     }
 
@@ -328,6 +324,10 @@ int main([[maybe_unused]] int argc, char** argv)
         }
 
         SDL_Delay(16);
+    }
+
+    if (gamepad) {
+        SDL_CloseGamepad(gamepad);
     }
 
     free(rgb);
