@@ -544,7 +544,7 @@ RT_API bool rt_sphere_hit(rt_sphere_t sphere,
 
     float root_chosen   = root_nearest;
 
-    if (root_chosen <= range_max || root_chosen >= range_max) {
+    if (root_chosen <= range_min || root_chosen >= range_max) {
 
         root_chosen = root_farthest;
 
@@ -553,10 +553,12 @@ RT_API bool rt_sphere_hit(rt_sphere_t sphere,
         }
     }
 
+
+    info->position          = rt_ray_at(ray, root_chosen);
+
     rt_vec3_t n             = rt_vec3_sub(info->position, sphere.center);
     n                       = rt_vec3_div_scalar(n, sphere.radius);
 
-    info->position          = rt_ray_at(ray, root_chosen);
     info->normal            = rt_vec3_norm(n);
     info->t                 = root_chosen;
     info->is_front_facing   = rt_vec3_dot(info->normal, ray.dir) < 0.0f;
@@ -1201,17 +1203,17 @@ RT_API uint32_t rt_world_sphere_closest_hit(const rt_world_t* world,
                                             rt_vec2_t range,
                                             rt_hit_info_t* info)
 {
-    if (RT_FACE_CULL_BOTH == world->face_cull_mode) {
+    enum rt_face_cull_mode cull_mode = world->face_cull_mode;
+
+    if (RT_FACE_CULL_BOTH == cull_mode) {
         return UINT32_MAX;
     }
 
-    rt_hit_info_t closest_hit_info    = {};
+    rt_hit_info_t closest_hit_info  = {};
     uint32_t closest_hit_index      = UINT32_MAX;
 
     uint32_t sphere_count           = world->sphere_count;
     const rt_sphere_t* spheres      = world->spheres;
-
-    enum rt_face_cull_mode cull_mode = world->face_cull_mode;
 
     for (uint32_t i = 0; i < sphere_count; ++i) {
 
@@ -1394,19 +1396,23 @@ RT_API bool rt_is_in_shadow(const rt_world_t* world,
     for (uint32_t i = 0; i < point_light_count; ++i) {
         const rt_point_light_t* light = &point_lights[i];
 
+        rt_vec3_t org = rt_vec3_add(hit_info->position,
+                                    rt_vec3_mul_scalar(hit_info->normal, RT_SHADOW_BIAS));
+
         rt_ray_t new_ray = {
-            .org = rt_vec3_add(hit_info->position,
-                               rt_vec3_mul_scalar(hit_info->normal, RT_SHADOW_BIAS)),
-            .dir = rt_vec3_norm(rt_vec3_sub(light->position,
-                                            hit_info->position)),
+            .org = org,
+            .dir = rt_vec3_norm(rt_vec3_sub(light->position, org)),
         };
 
         rt_hit_info_t new_hit_info = {};
         uint32_t geometry_hit_index = UINT32_MAX;
 
+        rt_vec2_t new_range = { RT_SHADOW_BIAS,
+                                rt_vec3_dist(org, light->position) - RT_SHADOW_BIAS };
+
         enum rt_hit_geometry_type shadow_hit_type = rt_world_any_closest_hit(world,
                                                                              new_ray,
-                                                                             range,
+                                                                             new_range,
                                                                              &new_hit_info,
                                                                              &geometry_hit_index);
 
