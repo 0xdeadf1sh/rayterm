@@ -25,6 +25,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////////// DEFINES //////////////////////////////////
@@ -35,6 +36,8 @@
 #define RT_PI                           3.1415926f
 #define RT_INIT_CAP                     8
 #define RT_SHADOW_BIAS                  0.001f
+#define RT_SUCCESS                      0
+#define RT_FAILURE                      -1
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////// MACRO FUNCTIONS //////////////////////////////
@@ -1424,9 +1427,11 @@ RT_API rt_vec3_t rt_world_compute_color(const rt_world_t* world,
     enum rt_material_type material_type = RT_MATERIAL_NONE;
 
     switch (hit_type) {
-        case RT_HIT_SPHERE:
-            material_index = world->spheres[geometry_hit_index].material_index;
-            material_type = world->spheres[geometry_hit_index].material_type;
+        case RT_HIT_SPHERE: {
+            const rt_sphere_t* sphere = &world->spheres[geometry_hit_index];
+            material_index = sphere->material_index;
+            material_type = sphere->material_type;
+        }
             break;
         case RT_HIT_NONE:
             return world->clear_color;
@@ -1474,6 +1479,76 @@ RT_API rt_vec3_t rt_world_compute_color(const rt_world_t* world,
         default:
             RT_ASSERT(false && "Unhandled material type");
             return world->clear_color;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    uint32_t* rgb_buffer;
+    uint32_t width;
+    uint32_t height;
+}
+rt_framebuffer_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API int rt_framebuffer_create(uint32_t width,
+                                 uint32_t height,
+                                 rt_framebuffer_t* framebuffer)
+{
+    framebuffer->rgb_buffer = (uint32_t*)malloc(width *
+                                                height *
+                                                sizeof(uint32_t));
+    if (!framebuffer->rgb_buffer) {
+        return RT_FAILURE;
+    }
+
+    framebuffer->width  = width;
+    framebuffer->height = height;
+
+    return RT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API int rt_framebuffer_resize(uint32_t new_width,
+                                 uint32_t new_height,
+                                 rt_framebuffer_t* framebuffer)
+{
+    uint32_t* rgb_buffer    = (uint32_t*)malloc(new_width *
+                                                new_height *
+                                                sizeof(uint32_t));
+
+    if (!rgb_buffer) {
+        return RT_FAILURE;
+    }
+
+    free(framebuffer->rgb_buffer);
+    framebuffer->rgb_buffer = rgb_buffer;
+
+    framebuffer->width      = new_width;
+    framebuffer->height     = new_height;
+
+    return RT_SUCCESS;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_framebuffer_write(uint32_t row,
+                                 uint32_t col,
+                                 rt_vec3_t color,
+                                 rt_framebuffer_t* framebuffer)
+{
+    RT_ASSERT(row < framebuffer->height);
+    RT_ASSERT(col < framebuffer->width);
+
+    framebuffer->rgb_buffer[row * framebuffer->width + col] = rt_vec3_to_uint32_alpha(color, 1.0f);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_framebuffer_free(rt_framebuffer_t* framebuffer)
+{
+    if (framebuffer->rgb_buffer) {
+        free(framebuffer->rgb_buffer);
+        framebuffer->rgb_buffer = NULL;
     }
 }
 

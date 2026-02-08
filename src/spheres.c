@@ -89,16 +89,13 @@ int main([[maybe_unused]] int argc, char** argv)
     rows *= 2;
     cols *= 2;
 
-    size_t pixelbuffer_size = rows * cols * sizeof(uint32_t);
-    uint32_t* rgb = malloc(pixelbuffer_size);
-    if (!rgb) {
-        fprintf(stderr, "%s: malloc() failed\n", argv[0]);
+    rt_framebuffer_t framebuffer = {};
+    if (RT_FAILURE == rt_framebuffer_create(cols, rows, &framebuffer)) {
+        fprintf(stderr, "%s: rt_framebuffer_create() failed\n", argv[0]);
+        notcurses_stop(nc);
         SDL_Quit();
         return EXIT_FAILURE;
     }
-
-    // Camera
-    float aspect = (float)cols / (float)(rows * 2);
 
     rt_vec3_t camera_center     = rt_vec3_create(0.0f, 0.0f, 0.0f);
     rt_vec3_t camera_dir        = rt_vec3_create(0.0f, 0.0f, 1.0f);
@@ -184,6 +181,35 @@ int main([[maybe_unused]] int argc, char** argv)
 
     while (is_running) {
 
+        uint32_t new_rows = 0;
+        uint32_t new_cols = 0;
+
+        ncplane_dim_yx(nstd, &new_rows, &new_cols);
+
+        new_rows *= 2;
+        new_cols *= 2;
+
+        if (new_rows != vopts.leny || new_cols != vopts.lenx) {
+
+            if (RT_FAILURE == rt_framebuffer_resize(new_cols,
+                                                    new_rows,
+                                                    &framebuffer)) {
+                fprintf(stderr, "%s: rt_framebuffer_resize() failed\n", argv[0]);
+                is_running = false;
+            }
+
+            vopts.leny = new_rows;
+            vopts.lenx = new_cols;
+
+            rows = new_rows;
+            cols = new_cols;
+
+            continue;
+        }
+
+        // Camera
+        float aspect = (float)cols / (float)(rows * 2);
+
         float current_time = (float)SDL_GetTicks();
         float delta_time = (last_time > 0.0f) ? (current_time - last_time) : 0.0f;
         last_time = current_time;
@@ -210,13 +236,6 @@ int main([[maybe_unused]] int argc, char** argv)
             switch (event.type) {
                 case SDL_EVENT_QUIT:
                     is_running = false;
-                    break;
-                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-                    if (SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_STICK)) {
-                        is_running = false;
-                    }
-                    break;
-                case SDL_EVENT_GAMEPAD_BUTTON_UP:
                     break;
                 case SDL_EVENT_GAMEPAD_AXIS_MOTION:
                     int leftX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
@@ -307,11 +326,11 @@ int main([[maybe_unused]] int argc, char** argv)
                                                                (rt_vec2_t){0.1f, 1000.0f},
                                                                10);
                 pixel_color = rt_vec3_apply_2(pixel_color, rt_apply_gamma_custom, 1.0f / 2.2f);
-                rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
+                rt_framebuffer_write(row, col, pixel_color, &framebuffer);
             }
         }
 
-        if (-1 == ncblit_rgba(rgb, (int32_t)(cols * sizeof(uint32_t)), &vopts)) {
+        if (-1 == ncblit_rgba(framebuffer.rgb_buffer, (int32_t)(cols * sizeof(uint32_t)), &vopts)) {
             fprintf(stderr, "%s: ncblit_rgba() failed\n", argv[0]);
             SDL_Quit();
             return EXIT_FAILURE;
@@ -330,7 +349,7 @@ int main([[maybe_unused]] int argc, char** argv)
         SDL_CloseGamepad(gamepad);
     }
 
-    free(rgb);
+    rt_framebuffer_free(&framebuffer);
     rt_world_free(&world);
     SDL_Quit();
     return notcurses_stop(nc);
