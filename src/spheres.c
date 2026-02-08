@@ -162,6 +162,28 @@ int main([[maybe_unused]] int argc, char** argv)
         }
     }
 
+    uint32_t big_sphere_index = rt_world_push_sphere(&world);
+    RT_ASSERT_PUSH(big_sphere_index);
+
+    rt_sphere_t* big_sphere = &world.spheres[big_sphere_index];
+    big_sphere->center.x = 0.0f;
+    big_sphere->center.y = -500.0f;
+    big_sphere->center.z = 0.0f;
+    big_sphere->radius = 495.0f;
+
+    uint32_t big_sphere_material_index = rt_world_push_diffuse_material(&world);
+    RT_ASSERT_PUSH(big_sphere_material_index);
+    rt_sphere_set_diffuse_material(&world, big_sphere_index, big_sphere_material_index);
+
+    rt_diffuse_material_t* big_sphere_material = &world.diffuse_materials[big_sphere_material_index];
+    big_sphere_material->ambient.x = 0.01f;
+    big_sphere_material->ambient.y = 0.01f;
+    big_sphere_material->ambient.z = 0.01f;
+    big_sphere_material->diffuse.x = 0.7f;
+    big_sphere_material->diffuse.y = 0.8f;
+    big_sphere_material->diffuse.z = 0.9f;
+    big_sphere_material->receives_shadows = true;
+
     uint32_t point_light_index = rt_world_push_point_light(&world);
     RT_ASSERT_PUSH(point_light_index);
 
@@ -320,7 +342,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
                 rt_vec3_t pixel_color = rt_world_compute_color(&world,
                                                                r,
-                                                               (rt_vec2_t){0.001f, 10000.0f},
+                                                               (rt_vec2_t){0.1f, 1000.0f},
                                                                10);
                 pixel_color = rt_vec3_apply_2(pixel_color, rt_apply_gamma_custom, 1.0f / 2.2f);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
