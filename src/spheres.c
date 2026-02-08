@@ -162,18 +162,21 @@ int main([[maybe_unused]] int argc, char** argv)
         }
     }
 
-    rt_point_light_t point_light = {
-        .position = rt_vec3_create(0.0f, 10.0f, -5.0f),
-        .diffuse = rt_vec3_create(0.25f, 0.5f, 1.0f),
-        .intensity = 2.0f,
-    };
+    uint32_t point_light_index = rt_world_push_point_light(&world);
+    RT_ASSERT_PUSH(point_light_index);
 
-    // light sphere
-    meshes[5].sphere = rt_sphere_create(point_light.position, 0.5f);
-    meshes[5].material.ambient = rt_vec3_create(1.0f, 1.0f, 1.0f);
-    meshes[5].material.diffuse = point_light.diffuse;
-    meshes[5].material.type = RT_MATERIAL_TYPE_EMISSIVE;
-    meshes[5].fragment_shader = emissive_fragment_shader;
+    rt_point_light_t* point_light = &world.point_lights[point_light_index];
+
+    point_light->position.x = 0.0f;
+    point_light->position.y = 10.0f;
+    point_light->position.z = -5.0f;
+
+    point_light->color.x = 0.25f;
+    point_light->color.y = 0.5f;
+    point_light->color.z = 1.0f;
+
+    point_light->intensity = 2.0f;
+    point_light->casts_shadows = true;
 
     struct ncvisual_options vopts = {};
     vopts.n = nstd;
@@ -241,7 +244,9 @@ int main([[maybe_unused]] int argc, char** argv)
                         camera_velocity_forward = rt_vec3_mul_scalar(camera_dir, ((float)rightY / 32768.0f));
                     }
                     else {
-                        camera_velocity_forward = rt_vec3_create(0.0f, 0.0f, 0.0f);
+                        camera_velocity_forward.x = 0.0f;
+                        camera_velocity_forward.y = 0.0f;
+                        camera_velocity_forward.z = 0.0f;
                     }
 
                     int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
@@ -250,7 +255,9 @@ int main([[maybe_unused]] int argc, char** argv)
                         camera_velocity_strafe = rt_vec3_mul_scalar(strafe, ((float)rightX / 32768.0f));
                     }
                     else {
-                        camera_velocity_strafe = rt_vec3_create(0.0f, 0.0f, 0.0f);
+                        camera_velocity_strafe.x = 0.0f;
+                        camera_velocity_strafe.y = 0.0f;
+                        camera_velocity_strafe.z = 0.0f;
                     }
                     break;
                 default:
@@ -293,9 +300,8 @@ int main([[maybe_unused]] int argc, char** argv)
 
         rt_vec3_t pixel00_loc = rt_vec3_add(viewport_upper_left, pixel_delta_diag);
 
-        point_light.position.x = point_light_radius * cosf(total_time);
-        point_light.position.z = point_light_radius * sinf(total_time) - 5.0f;
-        meshes[5].sphere.center = point_light.position;
+        point_light->position.x = point_light_radius * cosf(total_time);
+        point_light->position.z = point_light_radius * sinf(total_time) - 5.0f;
 
         for (uint32_t row = 0; row < rows; ++row) {
 
@@ -312,7 +318,10 @@ int main([[maybe_unused]] int argc, char** argv)
                     .org = camera_center,
                 };
 
-                rt_vec3_t pixel_color = compute_color(r, meshes, RT_BUFFER_LEN(meshes), &point_light, 3);
+                rt_vec3_t pixel_color = rt_world_compute_color(&world,
+                                                               r,
+                                                               (rt_vec2_t){0.001f, 10000.0f},
+                                                               10);
                 pixel_color = rt_vec3_apply_2(pixel_color, rt_apply_gamma_custom, 1.0f / 2.2f);
                 rgb[row * cols + col] = rt_vec3_to_uint32_alpha(pixel_color, 1.0f);
             }

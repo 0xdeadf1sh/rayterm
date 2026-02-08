@@ -686,7 +686,7 @@ rt_world_t;
         return UINT32_MAX;                                                  \
     }                                                                       \
     else if (count >= capacity) {                                           \
-        uint32_t capacity_new   = capacity ? RT_INIT_CAP : 2 * capacity;    \
+        uint32_t capacity_new   = capacity ? 2 * capacity : RT_INIT_CAP;    \
                                                                             \
         uint32_t bytes_required = capacity_new * sizeof(BUFFER_TYPE);       \
         BUFFER_TYPE* buffer_new = (BUFFER_TYPE*)malloc(bytes_required);     \
@@ -1353,7 +1353,6 @@ RT_API rt_vec3_t rt_fragment_shader_checkerboard(const rt_hit_info_t* hit_info,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_is_in_shadow(const rt_world_t* world,
                             const rt_hit_info_t* hit_info,
-                            rt_ray_t ray,
                             rt_vec2_t range)
 {
     uint32_t directional_light_count = world->directional_light_count;
@@ -1453,7 +1452,6 @@ RT_API rt_vec3_t rt_world_compute_color(const rt_world_t* world,
 
     bool is_in_shadow = rt_is_in_shadow(world,
                                         &hit_info,
-                                        ray,
                                         range);
 
     switch (material_type) {
