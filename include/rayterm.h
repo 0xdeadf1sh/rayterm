@@ -46,6 +46,8 @@
 #define RT_TO_RADIANS(DEGREES)          (DEGREES * 0.0174533f)
 #define RT_TO_DEGREES(RADIANS)          (RADIANS * 57.295779f)
 #define RT_ASSERT(EXPR)                 assert(EXPR && "RT_ASSERT: " #EXPR " failed")
+#define RT_CONCAT2(A, B)                A ## B
+#define RT_CONCAT3(A, B, C)             A ## B ## C
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////// UTILITIES /////////////////////////////////
@@ -627,52 +629,52 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_directional_light_t* directional_lights;
-    uint32_t directional_light_count;
-    uint32_t directional_light_capacity;
+    rt_directional_light_t* directional_light_buffer;
+    int32_t directional_light_count;
+    int32_t directional_light_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_point_light_t* point_lights;
-    uint32_t point_light_count;
-    uint32_t point_light_capacity;
+    rt_point_light_t* point_light_buffer;
+    int32_t point_light_count;
+    int32_t point_light_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
     //////////////////////////////// GEOMETRY /////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_sphere_t* spheres;
-    uint32_t sphere_count;
-    uint32_t sphere_capacity;
+    rt_sphere_t* sphere_buffer;
+    int32_t sphere_count;
+    int32_t sphere_capacity;
 
-    ////////////////////////////////////////////////////////////////////RT_INIT_CAP///////
+    ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// MATERIALS /////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_emissive_material_t* emissive_materials;
-    uint32_t emissive_material_count;
-    uint32_t emissive_material_capacity;
+    rt_emissive_material_t* emissive_material_buffer;
+    int32_t emissive_material_count;
+    int32_t emissive_material_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_checkerboard_material_t* checkerboard_materials;
-    uint32_t checkerboard_material_count;
-    uint32_t checkerboard_material_capacity;
+    rt_checkerboard_material_t* checkerboard_material_buffer;
+    int32_t checkerboard_material_count;
+    int32_t checkerboard_material_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_diffuse_material_t* diffuse_materials;
-    uint32_t diffuse_material_count;
-    uint32_t diffuse_material_capacity;
+    rt_diffuse_material_t* diffuse_material_buffer;
+    int32_t diffuse_material_count;
+    int32_t diffuse_material_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_metallic_material_t* metallic_materials;
-    uint32_t metallic_material_count;
-    uint32_t metallic_material_capacity;
+    rt_metallic_material_t* metallic_material_buffer;
+    int32_t metallic_material_count;
+    int32_t metallic_material_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_dielectric_material_t* dielectric_materials;
-    uint32_t dielectric_material_count;
-    uint32_t dielectric_material_capacity;
+    rt_dielectric_material_t* dielectric_material_buffer;
+    int32_t dielectric_material_count;
+    int32_t dielectric_material_capacity;
 
     ///////////////////////////////////////////////////////////////////////////
     ///////////////////////////////// STATE ///////////////////////////////////
@@ -684,89 +686,86 @@ typedef struct
 rt_world_t;
 
 ///////////////////////////////////////////////////////////////////////////
-#define RT_WORLD_PUSH(WORLD_NAME,                                           \
-                      BUFFER_TYPE,                                          \
-                      BUFFER_NAME,                                          \
-                      COUNT_NAME,                                           \
-                      CAPACITY_NAME)                                        \
+#define RT_WORLD_DEFINE_PUSH(OBJECT) [[nodiscard]]                          \
+RT_API int32_t RT_CONCAT2(rt_world_push_, OBJECT) (rt_world_t* world)       \
 {                                                                           \
-    uint32_t count     = WORLD_NAME->COUNT_NAME;                            \
-    uint32_t capacity  = WORLD_NAME->CAPACITY_NAME;                         \
+    typedef RT_CONCAT3(rt_, OBJECT, _t) buffer_type;                        \
+    buffer_type* buffer = world->RT_CONCAT2(OBJECT, _buffer);               \
                                                                             \
-    if (count == UINT32_MAX - 1) {                                          \
-        return UINT32_MAX;                                                  \
+    int32_t count     = world->RT_CONCAT2(OBJECT, _count);                  \
+    int32_t capacity  = world->RT_CONCAT2(OBJECT, _capacity);               \
+                                                                            \
+    if (count == INT32_MAX) {                                               \
+        return RT_FAILURE;                                                  \
     }                                                                       \
     else if (count >= capacity) {                                           \
-        uint32_t capacity_new   = capacity ? 2 * capacity : RT_INIT_CAP;    \
+        int32_t capacity_new   = capacity ? 2 * capacity : RT_INIT_CAP;     \
                                                                             \
-        uint32_t bytes_required = capacity_new * sizeof(BUFFER_TYPE);       \
-        BUFFER_TYPE* buffer_new = (BUFFER_TYPE*)malloc(bytes_required);     \
+        size_t bytes_required = (size_t)capacity_new * sizeof(buffer_type); \
+        buffer_type* buffer_new = (buffer_type*)malloc(bytes_required);     \
                                                                             \
         if (!buffer_new) {                                                  \
-            return UINT32_MAX;                                              \
+            return RT_FAILURE;                                              \
         }                                                                   \
                                                                             \
-        for (uint32_t i = 0; i < count; ++i) {                              \
-            buffer_new[i] = WORLD_NAME->BUFFER_NAME[i];                     \
+        for (int32_t i = 0; i < count; ++i) {                               \
+            buffer_new[i] = buffer[i];                                      \
         }                                                                   \
                                                                             \
-        free(WORLD_NAME->BUFFER_NAME);                                      \
+        free(buffer);                                                       \
                                                                             \
-        WORLD_NAME->BUFFER_NAME     = buffer_new;                           \
-        WORLD_NAME->CAPACITY_NAME   = capacity_new;                         \
+        world->RT_CONCAT2(OBJECT, _buffer)     = buffer_new;                \
+        world->RT_CONCAT2(OBJECT, _capacity)   = capacity_new;              \
     }                                                                       \
                                                                             \
-    WORLD_NAME->BUFFER_NAME[count]  = (BUFFER_TYPE){};                      \
-    WORLD_NAME->COUNT_NAME          += 1;                                   \
+    world->RT_CONCAT2(OBJECT, _buffer)[count]  = (buffer_type){};           \
+    world->RT_CONCAT2(OBJECT, _count)   += 1;                               \
     return count;                                                           \
 }
 
 ///////////////////////////////////////////////////////////////////////////
-#define RT_ASSERT_PUSH(COUNT) RT_ASSERT(COUNT != UINT32_MAX)
+#define RT_ASSERT_PUSH(COUNT) RT_ASSERT(COUNT != RT_FAILURE)
 
 ///////////////////////////////////////////////////////////////////////////
-#define RT_WORLD_POP(WORLD_NAME,                                            \
-                     COUNT_NAME)                                            \
+#define RT_WORLD_DEFINE_POP(OBJECT) [[nodiscard]]                           \
+RT_API int32_t RT_CONCAT2(rt_world_pop_, OBJECT) (rt_world_t* world)        \
 {                                                                           \
-    uint32_t count          = WORLD_NAME->COUNT_NAME;                       \
-                                                                            \
+    int32_t count = world->RT_CONCAT2(OBJECT, _count);                      \
     if (!count) {                                                           \
-        return;                                                             \
+        return RT_FAILURE;                                                  \
     }                                                                       \
-                                                                            \
-    WORLD_NAME->COUNT_NAME -= 1;                                            \
+    world->RT_CONCAT2(OBJECT, _count) -= 1;                                 \
+    return RT_SUCCESS;                                                      \
 }
 
 ///////////////////////////////////////////////////////////////////////////
-#define RT_ASSERT_POP(POPPED) RT_ASSERT(POPPED)
+#define RT_ASSERT_POP(POPPED) RT_ASSERT(POPPED != RT_SUCCESS)
 
 ///////////////////////////////////////////////////////////////////////////
-#define RT_WORLD_RESERVE(WORLD_NAME,                                        \
-                         BUFFER_TYPE,                                       \
-                         BUFFER_NAME,                                       \
-                         COUNT_NAME,                                        \
-                         CAPACITY_NAME,                                     \
-                         NEW_CAPACITY)                                      \
+#define RT_WORLD_DEFINE_RESERVE(OBJECT) [[nodiscard]]                       \
+RT_API int32_t RT_CONCAT2(rt_world_reserve_, OBJECT) (rt_world_t* world,    \
+                                                      int32_t capacity)     \
 {                                                                           \
-    uint32_t count          = WORLD_NAME->COUNT_NAME;                       \
-    uint32_t capacity_new   = NEW_CAPACITY;                                 \
+    int32_t count           = world->RT_CONCAT2(OBJECT, _count);            \
                                                                             \
-    uint32_t bytes_required = capacity_new * sizeof(BUFFER_TYPE);           \
-    BUFFER_TYPE* buffer_new = (BUFFER_TYPE*)malloc(bytes_required);         \
+    typedef RT_CONCAT3(rt_, OBJECT, _t) buffer_type;                        \
+                                                                            \
+    size_t bytes_required   = (size_t)capacity * sizeof(buffer_type);       \
+    buffer_type* buffer_new = (buffer_type*)malloc(bytes_required);         \
                                                                             \
     if (!buffer_new) {                                                      \
-        return false;                                                       \
+        return RT_FAILURE;                                                  \
     }                                                                       \
                                                                             \
-    for (uint32_t i = 0; i < count; ++i) {                                  \
-        buffer_new[i] = WORLD_NAME->BUFFER_NAME[i];                         \
+    for (int32_t i = 0; i < count; ++i) {                                   \
+        buffer_new[i] = world->RT_CONCAT2(OBJECT, _buffer)[i];              \
     }                                                                       \
                                                                             \
-    free(WORLD_NAME->BUFFER_NAME);                                          \
+    free(world->RT_CONCAT2(OBJECT, _buffer));                               \
                                                                             \
-    WORLD_NAME->BUFFER_NAME     = buffer_new;                               \
-    WORLD_NAME->CAPACITY_NAME   = capacity_new;                             \
-    return true;                                                            \
+    world->RT_CONCAT2(OBJECT, _buffer)     = buffer_new;                    \
+    world->RT_CONCAT2(OBJECT, _capacity)   = capacity;                      \
+    return RT_SUCCESS;                                                      \
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -785,236 +784,34 @@ rt_world_t;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_directional_light(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_directional_light_t,
-                  directional_lights,
-                  directional_light_count,
-                  directional_light_capacity)
-}
+RT_WORLD_DEFINE_PUSH(directional_light)
+RT_WORLD_DEFINE_PUSH(point_light)
+RT_WORLD_DEFINE_PUSH(sphere)
+RT_WORLD_DEFINE_PUSH(emissive_material)
+RT_WORLD_DEFINE_PUSH(checkerboard_material)
+RT_WORLD_DEFINE_PUSH(diffuse_material)
+RT_WORLD_DEFINE_PUSH(metallic_material)
+RT_WORLD_DEFINE_PUSH(dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_point_light(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_point_light_t,
-                  point_lights,
-                  point_light_count,
-                  point_light_capacity);
-}
+RT_WORLD_DEFINE_POP(directional_light)
+RT_WORLD_DEFINE_POP(point_light)
+RT_WORLD_DEFINE_POP(sphere)
+RT_WORLD_DEFINE_POP(emissive_material)
+RT_WORLD_DEFINE_POP(checkerboard_material)
+RT_WORLD_DEFINE_POP(diffuse_material)
+RT_WORLD_DEFINE_POP(metallic_material)
+RT_WORLD_DEFINE_POP(dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_sphere(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_sphere_t,
-                  spheres,
-                  sphere_count,
-                  sphere_capacity)
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_emissive_material(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_emissive_material_t,
-                  emissive_materials,
-                  emissive_material_count,
-                  emissive_material_capacity)
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_checkerboard_material(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_checkerboard_material_t,
-                  checkerboard_materials,
-                  checkerboard_material_count,
-                  checkerboard_material_capacity)
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_diffuse_material(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_diffuse_material_t,
-                  diffuse_materials,
-                  diffuse_material_count,
-                  diffuse_material_capacity)
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_metallic_material(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_metallic_material_t,
-                  metallic_materials,
-                  metallic_material_count,
-                  metallic_material_capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API uint32_t rt_world_push_dielectric_material(rt_world_t* world)
-{
-    RT_WORLD_PUSH(world,
-                  rt_dielectric_material_t,
-                  dielectric_materials,
-                  dielectric_material_count,
-                  dielectric_material_capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_directional_light(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 directional_light_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_point_light(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 point_light_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_sphere(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 sphere_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_emissive_material(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 emissive_material_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_checkerboard_material(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 checkerboard_material_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_diffuse_material(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 diffuse_material_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_metallic_material(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 metallic_material_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_pop_dielectric_material(rt_world_t* world)
-{
-    RT_WORLD_POP(world,
-                 dielectric_material_count);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_directional_lights(rt_world_t* world,
-                                                uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_directional_light_t,
-                     directional_lights,
-                     directional_light_count,
-                     directional_light_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_point_lights(rt_world_t* world,
-                                          uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_point_light_t,
-                     point_lights,
-                     point_light_count,
-                     point_light_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_spheres(rt_world_t* world,
-                                     uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_sphere_t,
-                     spheres,
-                     sphere_count,
-                     sphere_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_emissive_materials(rt_world_t* world,
-                                                uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_emissive_material_t,
-                     emissive_materials,
-                     emissive_material_count,
-                     emissive_material_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_checkerboard_materials(rt_world_t* world,
-                                                    uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_checkerboard_material_t,
-                     checkerboard_materials,
-                     checkerboard_material_count,
-                     checkerboard_material_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_diffuse_materials(rt_world_t* world,
-                                               uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_diffuse_material_t,
-                     diffuse_materials,
-                     diffuse_material_count,
-                     diffuse_material_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_metallic_materials(rt_world_t* world,
-                                                uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_metallic_material_t,
-                     metallic_materials,
-                     metallic_material_count,
-                     metallic_material_capacity,
-                     capacity);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_reserve_dielectric_materials(rt_world_t* world,
-                                                  uint32_t capacity)
-{
-    RT_WORLD_RESERVE(world,
-                     rt_dielectric_material_t,
-                     dielectric_materials,
-                     dielectric_material_count,
-                     dielectric_material_capacity,
-                     capacity);
-}
+RT_WORLD_DEFINE_RESERVE(directional_light)
+RT_WORLD_DEFINE_RESERVE(point_light)
+RT_WORLD_DEFINE_RESERVE(sphere)
+RT_WORLD_DEFINE_RESERVE(emissive_material)
+RT_WORLD_DEFINE_RESERVE(checkerboard_material)
+RT_WORLD_DEFINE_RESERVE(diffuse_material)
+RT_WORLD_DEFINE_RESERVE(metallic_material)
+RT_WORLD_DEFINE_RESERVE(dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_world_free_directional_lights(rt_world_t* world)
@@ -1540,7 +1337,8 @@ RT_API void rt_framebuffer_write(uint32_t row,
     RT_ASSERT(row < framebuffer->height);
     RT_ASSERT(col < framebuffer->width);
 
-    framebuffer->rgb_buffer[row * framebuffer->width + col] = rt_vec3_to_uint32_alpha(color, 1.0f);
+    uint32_t index = row * framebuffer->width + col;
+    framebuffer->rgb_buffer[index] = rt_vec3_to_uint32_alpha(color, 1.0f);
 }
 
 ///////////////////////////////////////////////////////////////////////////
