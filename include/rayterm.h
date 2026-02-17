@@ -31,20 +31,81 @@
 //////////////////////////////// DEFINES //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #define RT_API                          static inline
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+#define RT_GAMMA                        2.2
+#else
 #define RT_GAMMA                        2.2f
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+#define RT_GAMMA_INVERSE                0.454545
+#else
 #define RT_GAMMA_INVERSE                0.454545f
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+#define RT_PI                           3.1415926
+#else
 #define RT_PI                           3.1415926f
+#endif
+
+///////////////////////////////////////////////////////////////////////////
 #define RT_INIT_CAP                     8
+
+#ifdef RT_USE_FLOAT64
+#define RT_SHADOW_BIAS                  0.001
+#else
 #define RT_SHADOW_BIAS                  0.001f
-#define RT_SUCCESS                      0
+#endif
+
+#define RT_SUCCESS                       0
 #define RT_FAILURE                      -1
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////////////// TYPES ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+typedef double rt_float_t;
+#else
+typedef float rt_float_t;
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_IDX64
+typedef int64_t rt_idx_t;
+#else
+typedef int32_t rt_idx_t;
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+typedef int32_t rt_status_t;
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////// MACRO FUNCTIONS //////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #define RT_BUFFER_LEN(BUFFER)           (sizeof(BUFFER) / sizeof((BUFFER)[0]))
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+#define RT_TO_RADIANS(DEGREES)          (DEGREES * 0.0174533)
+#else
 #define RT_TO_RADIANS(DEGREES)          (DEGREES * 0.0174533f)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_FLOAT64
+#define RT_TO_DEGREES(RADIANS)          (RADIANS * 57.295779)
+#else
 #define RT_TO_DEGREES(RADIANS)          (RADIANS * 57.295779f)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
 #define RT_ASSERT(EXPR)                 assert(EXPR && "RT_ASSERT: " #EXPR " failed")
 #define RT_CONCAT2(A, B)                A ## B
 #define RT_CONCAT3(A, B, C)             A ## B ## C
@@ -54,21 +115,33 @@
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_apply_inverse_gamma(float x)
+RT_API rt_float_t rt_apply_inverse_gamma(rt_float_t x)
 {
+#ifdef RT_USE_FLOAT64
+    return pow(x, RT_GAMMA_INVERSE);
+#else
     return powf(x, RT_GAMMA_INVERSE);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_apply_gamma(float x)
+RT_API rt_float_t rt_apply_gamma(rt_float_t x)
 {
+#ifdef RT_USE_FLOAT64
+    return pow(x, RT_GAMMA);
+#else
     return powf(x, RT_GAMMA);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_apply_gamma_custom(float x, float gamma)
+RT_API rt_float_t rt_apply_gamma_custom(rt_float_t x, rt_float_t gamma)
 {
+#ifdef RT_USE_FLOAT64
+    return pow(x, gamma);
+#else
     return powf(x, gamma);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -78,19 +151,19 @@ RT_API float rt_apply_gamma_custom(float x, float gamma)
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
-    float x, y;
+    rt_float_t x, y;
 }
 rt_vec2_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
-    float x, y, z;
+    rt_float_t x, y, z;
 }
 rt_vec3_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec3_t rt_vec3_create(float x, float y, float z)
+RT_API rt_vec3_t rt_vec3_create(rt_float_t x, rt_float_t y, rt_float_t z)
 {
     return (rt_vec3_t){x, y, z};
 }
@@ -106,7 +179,7 @@ RT_API rt_vec3_t rt_vec3_add(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec3_t rt_vec3_add_scalar(rt_vec3_t p, float k)
+RT_API rt_vec3_t rt_vec3_add_scalar(rt_vec3_t p, rt_float_t k)
 {
     p.x += k;
     p.y += k;
@@ -126,7 +199,7 @@ RT_API rt_vec3_t rt_vec3_sub(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t p, float k)
+RT_API rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t p, rt_float_t k)
 {
     p.x -= k;
     p.y -= k;
@@ -146,7 +219,7 @@ RT_API rt_vec3_t rt_vec3_mul(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t p, float k)
+RT_API rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t p, rt_float_t k)
 {
     p.x *= k;
     p.y *= k;
@@ -166,7 +239,7 @@ RT_API rt_vec3_t rt_vec3_div(rt_vec3_t p, rt_vec3_t q)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, float k)
+RT_API rt_vec3_t rt_vec3_div_scalar(rt_vec3_t p, rt_float_t k)
 {
     p.x /= k;
     p.y /= k;
@@ -186,19 +259,19 @@ RT_API rt_vec3_t rt_vec3_negate(rt_vec3_t p)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_vec3_len(rt_vec3_t p)
+RT_API rt_float_t rt_vec3_len(rt_vec3_t p)
 {
     return sqrtf(p.x * p.x + p.y * p.y + p.z * p.z);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_vec3_sqrlen(rt_vec3_t p)
+RT_API rt_float_t rt_vec3_sqrlen(rt_vec3_t p)
 {
     return p.x * p.x + p.y * p.y + p.z * p.z;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API float rt_vec3_dot(rt_vec3_t p, rt_vec3_t q)
+RT_API rt_float_t rt_vec3_dot(rt_vec3_t p, rt_vec3_t q)
 {
     return p.x * q.x + p.y * q.y + p.z * q.z;
 }
@@ -218,7 +291,7 @@ RT_API rt_vec3_t rt_vec3_cross(rt_vec3_t p, rt_vec3_t q)
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec3_t rt_vec3_norm(rt_vec3_t p)
 {
-    float k = p.x * p.x + p.y * p.y + p.z * p.z;
+    rt_float_t k = p.x * p.x + p.y * p.y + p.z * p.z;
     if (k > 0.0f) {
         k = 1.0f / sqrtf(k);
         p.x *= k;
