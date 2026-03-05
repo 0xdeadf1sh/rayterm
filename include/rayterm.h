@@ -738,6 +738,7 @@ typedef struct
 {
     rt_vec4_t               position;
     rt_vec4_t               normal;
+    rt_float_t              side_length;
 
     rt_idx_t                material_index;
     enum rt_material_type   material_type;
@@ -804,21 +805,40 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
     RT_ASSERT(info      != NULL);
     RT_ASSERT(nearestZ  <= farthestZ);
 
-    rt_float_t denom = rt_vec4_dot(plane.normal, ray.dir);
+    rt_vec4_t negated_plane_normal = rt_vec4_negate(plane.normal)   ;
+
+    rt_float_t denom = rt_vec4_dot(negated_plane_normal,
+                                   ray.dir);
 
     if (denom < RT_EPSILON) {
         return false;
     }
 
-    rt_vec4_t dir = rt_vec4_sub(plane.position, ray.org);
-    rt_float_t t = rt_vec4_dot(dir, plane.normal) / denom;
+    rt_vec4_t dir = rt_vec4_sub(plane.position,
+                                ray.org);
+
+    rt_float_t t = rt_vec4_dot(dir,
+                               negated_plane_normal) / denom;
+
+    rt_vec4_t hit_position = rt_ray_at(ray, t);
+
+    rt_float_t diff_x = fabs(hit_position.x - plane.position.x);
+    rt_float_t diff_y = fabs(hit_position.y - plane.position.y);
+    rt_float_t diff_z = fabs(hit_position.z - plane.position.z);
+
+    if (diff_x > plane.side_length ||
+        diff_y > plane.side_length ||
+        diff_z > plane.side_length) {
+
+        return false;
+    }
 
     if (t < nearestZ || t > farthestZ) {
         return false;
     }
 
     info->position          = rt_ray_at(ray, t);
-    info->normal            = plane.normal;
+    info->normal            = negated_plane_normal;
     info->t                 = t;
     info->is_front_facing   = true;
 
@@ -1243,7 +1263,8 @@ RT_API void rt_world_set_sphere_params(rt_world_t*          world,
 RT_API void rt_world_set_plane_params(rt_world_t*           world,
                                       rt_idx_t              plane_index,
                                       rt_vec4_t             plane_position,
-                                      rt_vec4_t             plane_normal)
+                                      rt_vec4_t             plane_normal,
+                                      rt_float_t            plane_side_length)
 {
     RT_ASSERT(world         != NULL);
     RT_ASSERT(plane_index   >= 0);
@@ -1256,6 +1277,7 @@ RT_API void rt_world_set_plane_params(rt_world_t*           world,
 
     plane->position     = plane_position;
     plane->normal       = plane_normal;
+    plane->side_length  = plane_side_length;
 }
 
 ///////////////////////////////////////////////////////////////////////////

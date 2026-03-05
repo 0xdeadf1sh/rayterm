@@ -118,7 +118,8 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_world_set_plane_params(&world,
                               plane_index,
                               plane_position,
-                              plane_normal);
+                              plane_normal,
+                              RT_FLOAT(10.0));
 
     rt_idx_t plane_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&world,
