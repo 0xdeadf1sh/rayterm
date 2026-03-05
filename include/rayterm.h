@@ -44,12 +44,11 @@
 #define RT_GAMMA                        RT_FLOAT(2.2)
 #define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
 #define RT_PI                           RT_FLOAT(3.1415926)
+#define RT_EPSILON                      RT_FLOAT(0.000001)
+#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_INIT_CAP                     8
-
-///////////////////////////////////////////////////////////////////////////
-#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// TYPES ///////////////////////////////////
@@ -185,6 +184,14 @@ RT_API rt_float_t rt_apply_gamma_custom(rt_float_t x,
                                         rt_float_t gamma)
 {
     return pow(x, gamma);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_clamp(rt_float_t x,
+                           rt_float_t minimum,
+                           rt_float_t maximum)
+{
+    return fmin(maximum, fmax(x, minimum));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -509,10 +516,10 @@ RT_API rt_vec4_t rt_vec4_clamp(rt_vec4_t            p,
                                rt_float_t           min,
                                rt_float_t           max)
 {
-    p.x = fmin(max, fmax(p.x, min));
-    p.y = fmin(max, fmax(p.y, min));
-    p.z = fmin(max, fmax(p.z, min));
-    p.w = fmin(max, fmax(p.w, min));
+    p.x = rt_clamp(p.x, min, max);
+    p.y = rt_clamp(p.y, min, max);
+    p.z = rt_clamp(p.z, min, max);
+    p.w = rt_clamp(p.w, min, max);
 
     return p;
 }
@@ -681,6 +688,7 @@ enum rt_hit_geometry_type
 {
     RT_HIT_null,
     RT_HIT_sphere,
+    RT_HIT_plane,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -724,6 +732,17 @@ typedef struct
     enum rt_material_type   material_type;
 }
 rt_sphere_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_vec4_t               position;
+    rt_vec4_t               normal;
+
+    rt_idx_t                material_index;
+    enum rt_material_type   material_type;
+}
+rt_plane_t;
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
@@ -771,6 +790,37 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
     info->normal            = rt_vec4_norm(n);
     info->t                 = root_chosen;
     info->is_front_facing   = rt_vec4_dot(info->normal, ray.dir) < RT_FLOAT(0.0);
+
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_plane_hit(rt_plane_t             plane,
+                         rt_ray_t               ray,
+                         rt_float_t             nearestZ,
+                         rt_float_t             farthestZ,
+                         rt_hit_info_t*         info)
+{
+    RT_ASSERT(info      != NULL);
+    RT_ASSERT(nearestZ  <= farthestZ);
+
+    rt_float_t denom = rt_vec4_dot(plane.normal, ray.dir);
+
+    if (denom < RT_EPSILON) {
+        return false;
+    }
+
+    rt_vec4_t dir = rt_vec4_sub(plane.position, ray.org);
+    rt_float_t t = rt_vec4_dot(dir, plane.normal) / denom;
+
+    if (t < nearestZ || t > farthestZ) {
+        return false;
+    }
+
+    info->position          = rt_ray_at(ray, t);
+    info->normal            = plane.normal;
+    info->t                 = t;
+    info->is_front_facing   = true;
 
     return true;
 }
@@ -846,6 +896,7 @@ typedef struct
     //////////////////////////////// GEOMETRY /////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
     RT_WORLD_DEF_BUFFER(sphere)
+    RT_WORLD_DEF_BUFFER(plane);
 
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// MATERIALS /////////////////////////////////
@@ -994,6 +1045,7 @@ RT_API void RT_CONCAT3(rt_world_free_, OBJECT, s)                           \
 RT_WORLD_DEFINE_PUSH(directional_light)
 RT_WORLD_DEFINE_PUSH(point_light)
 RT_WORLD_DEFINE_PUSH(sphere)
+RT_WORLD_DEFINE_PUSH(plane)
 RT_WORLD_DEFINE_PUSH(emissive_material)
 RT_WORLD_DEFINE_PUSH(checkerboard_material)
 RT_WORLD_DEFINE_PUSH(diffuse_material)
@@ -1004,6 +1056,7 @@ RT_WORLD_DEFINE_PUSH(dielectric_material)
 RT_WORLD_DEFINE_POP(directional_light)
 RT_WORLD_DEFINE_POP(point_light)
 RT_WORLD_DEFINE_POP(sphere)
+RT_WORLD_DEFINE_POP(plane)
 RT_WORLD_DEFINE_POP(emissive_material)
 RT_WORLD_DEFINE_POP(checkerboard_material)
 RT_WORLD_DEFINE_POP(diffuse_material)
@@ -1014,6 +1067,7 @@ RT_WORLD_DEFINE_POP(dielectric_material)
 RT_WORLD_DEFINE_RESERVE(directional_light)
 RT_WORLD_DEFINE_RESERVE(point_light)
 RT_WORLD_DEFINE_RESERVE(sphere)
+RT_WORLD_DEFINE_RESERVE(plane)
 RT_WORLD_DEFINE_RESERVE(emissive_material)
 RT_WORLD_DEFINE_RESERVE(checkerboard_material)
 RT_WORLD_DEFINE_RESERVE(diffuse_material)
@@ -1024,6 +1078,7 @@ RT_WORLD_DEFINE_RESERVE(dielectric_material)
 RT_WORLD_DEFINE_FREE(directional_light)
 RT_WORLD_DEFINE_FREE(point_light)
 RT_WORLD_DEFINE_FREE(sphere)
+RT_WORLD_DEFINE_FREE(plane)
 RT_WORLD_DEFINE_FREE(emissive_material)
 RT_WORLD_DEFINE_FREE(checkerboard_material)
 RT_WORLD_DEFINE_FREE(diffuse_material)
@@ -1036,6 +1091,7 @@ RT_API void rt_world_free(rt_world_t* world)
     rt_world_free_directional_lights            (world);
     rt_world_free_point_lights                  (world);
     rt_world_free_spheres                       (world);
+    rt_world_free_planes                        (world);
     rt_world_free_emissive_materials            (world);
     rt_world_free_checkerboard_materials        (world);
     rt_world_free_diffuse_materials             (world);
@@ -1076,6 +1132,13 @@ RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(sphere, metallic_material)
 RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(sphere, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, emissive_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, checkerboard_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, diffuse_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
+
+///////////////////////////////////////////////////////////////////////////
 #define RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(GEOMETRY, MATERIAL)           \
 RT_API void RT_CONCAT4(rt_, GEOMETRY, _unlink_, MATERIAL)                   \
 (rt_world_t* world, rt_idx_t geometry_index)                                \
@@ -1103,6 +1166,13 @@ RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(sphere, checkerboard_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(sphere, diffuse_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(sphere, metallic_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(sphere, dielectric_material)
+
+///////////////////////////////////////////////////////////////////////////
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, emissive_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, checkerboard_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, diffuse_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_world_set_directional_light_params(rt_world_t*   world,
@@ -1167,6 +1237,25 @@ RT_API void rt_world_set_sphere_params(rt_world_t*          world,
 
     sphere->center = sphere_center;
     sphere->radius = sphere_radius;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_world_set_plane_params(rt_world_t*           world,
+                                      rt_idx_t              plane_index,
+                                      rt_vec4_t             plane_position,
+                                      rt_vec4_t             plane_normal)
+{
+    RT_ASSERT(world         != NULL);
+    RT_ASSERT(plane_index   >= 0);
+
+    rt_plane_t* plane_buffer = world->plane_buffer;
+    RT_ASSERT(plane_buffer != NULL);
+
+    rt_plane_t* plane = &plane_buffer[plane_index];
+    RT_ASSERT(plane != NULL);
+
+    plane->position     = plane_position;
+    plane->normal       = plane_normal;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1302,7 +1391,6 @@ RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
     RT_ASSERT(sphere_count         >= 0);
 
     const rt_sphere_t* spheres      = world->sphere_buffer;
-    RT_ASSERT(spheres              != NULL);
 
     for (rt_idx_t i = 0; i < sphere_count; ++i) {
 
@@ -1347,17 +1435,117 @@ RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_world_plane_closest_hit(const rt_world_t*    world,
+                                       rt_ray_t             ray,
+                                       rt_float_t           nearestZ,
+                                       rt_float_t           farthestZ,
+                                       rt_hit_ext_info_t*   info)
+{
+    RT_ASSERT(world         != NULL);
+    RT_ASSERT(nearestZ      <= farthestZ);
+    RT_ASSERT(info          != NULL);
+
+    enum rt_face_cull_mode cull_mode = world->face_cull_mode;
+
+    if (RT_FACE_cull_both == cull_mode) {
+
+        info->geometry_type     = RT_HIT_null;
+        info->geometry_index    = 0;
+
+        return false;
+    }
+
+    rt_hit_info_t closest_hit_info  = {};
+    rt_idx_t closest_hit_index      = -1;
+
+    rt_idx_t plane_count            = world->plane_count;
+    RT_ASSERT(plane_count          >= 0);
+
+    const rt_plane_t* planes        = world->plane_buffer;
+
+    for (rt_idx_t i = 0; i < plane_count; ++i) {
+
+        rt_hit_info_t hit_info = {};
+
+        if (rt_plane_hit(planes[i],
+                         ray,
+                         nearestZ,
+                         farthestZ,
+                         &hit_info)) {
+
+            bool is_front_facing = hit_info.is_front_facing;
+
+            if ((RT_FACE_cull_front == cull_mode &&  is_front_facing) ||
+                (RT_FACE_cull_back  == cull_mode && !is_front_facing)) {
+
+                continue;
+            }
+
+            if (-1 == closest_hit_index ||
+                hit_info.t < closest_hit_info.t) {
+
+                closest_hit_info    = hit_info;
+                closest_hit_index   = i;
+            }
+        }
+    }
+
+    if (-1 != closest_hit_index) {
+
+        info->info              = closest_hit_info;
+        info->geometry_type     = RT_HIT_plane;
+        info->geometry_index    = closest_hit_index;
+
+        return true;
+    }
+
+    info->geometry_type         = RT_HIT_null;
+    info->geometry_index        = 0;
+
+    return false;
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                      rt_ray_t              ray,
                                      rt_float_t            nearestZ,
                                      rt_float_t            farthestZ,
                                      rt_hit_ext_info_t*    info)
 {
-    return rt_world_sphere_closest_hit(world,
-                                       ray,
-                                       nearestZ,
-                                       farthestZ,
-                                       info);
+    bool is_hit_bool_array[2]           = {};
+    rt_hit_ext_info_t hit_info_array[2] = {};
+
+    RT_ASSERT(RT_BUFFER_LEN(is_hit_bool_array) == RT_BUFFER_LEN(hit_info_array));
+
+    is_hit_bool_array[0] = rt_world_sphere_closest_hit(world,
+                                                       ray,
+                                                       nearestZ,
+                                                       farthestZ,
+                                                       &hit_info_array[0]);
+
+    is_hit_bool_array[1] = rt_world_plane_closest_hit(world,
+                                                      ray,
+                                                      nearestZ,
+                                                      farthestZ,
+                                                      &hit_info_array[1]);
+
+    bool is_hit_any     = false;
+    uint32_t hit_idx    = 0;
+
+    for (uint32_t i = 0; i < RT_BUFFER_LEN(is_hit_bool_array); ++i) {
+
+        if (is_hit_bool_array[i]) {
+
+            is_hit_any  = true;
+            hit_idx     = i;
+        }
+    }
+
+    if (is_hit_any) {
+        *info = hit_info_array[hit_idx];
+    }
+
+    return is_hit_any;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1573,6 +1761,14 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             material_type   = world->sphere_buffer[geometry_index].material_type;
             material_index  = world->sphere_buffer[geometry_index].material_index;
+
+            break;
+        case RT_HIT_plane:
+
+            RT_ASSERT(world->plane_buffer != NULL);
+
+            material_type   = world->plane_buffer[geometry_index].material_type;
+            material_index  = world->plane_buffer[geometry_index].material_index;
 
             break;
         default:

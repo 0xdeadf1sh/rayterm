@@ -101,23 +101,28 @@ int main([[maybe_unused]] int argc, char** argv)
 
     world.face_cull_mode = RT_FACE_cull_back;
 
-    rt_idx_t big_sphere_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world,
-                                                        &big_sphere_index));
+    rt_idx_t plane_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&world,
+                                                       &plane_index));
 
-    rt_vec4_t big_sphere_center = { RT_FLOAT(0.0),
-                                    RT_FLOAT(-500.0),
-                                    RT_FLOAT(0.0),
-                                    RT_FLOAT(1.0) };
+    rt_vec4_t plane_position = { RT_FLOAT(0.0),
+                                 RT_FLOAT(-5.0),
+                                 RT_FLOAT(0.0),
+                                 RT_FLOAT(1.0) };
 
-    rt_world_set_sphere_params(&world,
-                               big_sphere_index,
-                               big_sphere_center,
-                               RT_FLOAT(495.0));
+    rt_vec4_t plane_normal = { RT_FLOAT(0.0),
+                               RT_FLOAT(1.0),
+                               RT_FLOAT(0.0),
+                               RT_FLOAT(0.0) };
 
-    rt_idx_t big_sphere_material_index = 0;
+    rt_world_set_plane_params(&world,
+                              plane_index,
+                              plane_position,
+                              plane_normal);
+
+    rt_idx_t plane_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&world,
-                                                                       &big_sphere_material_index));
+                                                                       &plane_material_index));
 
     rt_vec4_t mat_color_0 = { RT_FLOAT(0.1),
                               RT_FLOAT(0.1),
@@ -130,15 +135,15 @@ int main([[maybe_unused]] int argc, char** argv)
                               RT_FLOAT(1.0) };
 
     rt_world_set_checkerboard_material_params(&world,
-                                              big_sphere_material_index,
+                                              plane_material_index,
                                               mat_color_0,
                                               mat_color_1,
                                               RT_FLOAT(0.2),
                                               true);
 
-    rt_sphere_link_checkerboard_material(&world,
-                                         big_sphere_index,
-                                         big_sphere_material_index);
+    rt_plane_link_checkerboard_material(&world,
+                                        plane_index,
+                                        plane_material_index);
 
     rt_idx_t point_light_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&world,
@@ -171,15 +176,15 @@ int main([[maybe_unused]] int argc, char** argv)
 
     bool is_running = true;
 
+    rt_vec4_t camera_z          = { RT_FLOAT(0.0),
+                                    RT_FLOAT(0.0),
+                                    RT_FLOAT(-1.0),
+                                    RT_FLOAT(0.0) };
+
     rt_vec4_t camera_center     = { RT_FLOAT(0.0),
                                     RT_FLOAT(0.0),
                                     RT_FLOAT(0.0),
                                     RT_FLOAT(1.0) };
-
-    rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
-                                    RT_FLOAT(0.0),
-                                    RT_FLOAT(1.0),
-                                    RT_FLOAT(0.0) };
 
     rt_vec4_t camera_up         = { RT_FLOAT(0.0),
                                     RT_FLOAT(1.0),
@@ -203,6 +208,9 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_float_t camera_smoothing         = RT_FLOAT(0.01);
     rt_float_t camera_speed             = RT_FLOAT(0.5);
     rt_float_t camera_rotation_speed    = RT_FLOAT(0.05);
+    rt_float_t camera_pitch_delta       = RT_FLOAT(0.0);
+    rt_float_t camera_yaw_delta         = RT_FLOAT(0.0);
+
     rt_float_t point_light_radius       = RT_FLOAT(1.0);
 
     rt_float_t last_time     = RT_FLOAT(0.0);
@@ -246,6 +254,12 @@ int main([[maybe_unused]] int argc, char** argv)
         struct ncinput input = {};
         uint32_t input_id = 0;
 
+        rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
+                                        RT_FLOAT(0.0),
+                                        RT_FLOAT(-1.0),
+                                        RT_FLOAT(0.0) };
+
+
         while ((input_id = notcurses_get_nblock(nc, &input))) {
 
             if (input.id == NCKEY_ESC && input.evtype == NCTYPE_RELEASE) {
@@ -255,7 +269,7 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == 'w') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_forward_new = rt_vec4_negate(rt_vec4_mul_scalar(camera_dir,
+                        camera_velocity_forward_new = rt_vec4_negate(rt_vec4_mul_scalar(camera_z,
                                                                                         camera_speed));
                         break;
                     case NCTYPE_RELEASE:
@@ -268,7 +282,7 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == 's') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_forward_new = rt_vec4_mul_scalar(camera_dir,
+                        camera_velocity_forward_new = rt_vec4_mul_scalar(camera_z,
                                                                          camera_speed);
                         break;
                     case NCTYPE_RELEASE:
@@ -280,7 +294,7 @@ int main([[maybe_unused]] int argc, char** argv)
             }
 
             rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera_up,
-                                                                             camera_dir)), camera_speed);
+                                                                             camera_z)), camera_speed);
 
             if (input.id == 'a') {
                 switch (input.evtype) {
@@ -310,10 +324,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == NCKEY_LEFT) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_rotation_new.y = camera_rotation_speed;
+                        camera_yaw_delta = camera_rotation_speed;
                         break;
                     case NCTYPE_RELEASE:
-                        camera_rotation_new.y = RT_FLOAT(0.0);
+                        camera_yaw_delta = RT_FLOAT(0.0);
                         break;
                     default:
                         break;
@@ -322,10 +336,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == NCKEY_RIGHT) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_rotation_new.y = -camera_rotation_speed;
+                        camera_yaw_delta = -camera_rotation_speed;
                         break;
                     case NCTYPE_RELEASE:
-                        camera_rotation_new.y = RT_FLOAT(0.0);
+                        camera_yaw_delta = RT_FLOAT(0.0);
                         break;
                     default:
                         break;
@@ -335,10 +349,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == NCKEY_UP) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_rotation_new.x = camera_rotation_speed;
+                        camera_pitch_delta = -camera_rotation_speed;
                         break;
                     case NCTYPE_RELEASE:
-                        camera_rotation_new.x = RT_FLOAT(0.0);
+                        camera_pitch_delta = RT_FLOAT(0.0);
                         break;
                     default:
                         break;
@@ -347,10 +361,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == NCKEY_DOWN) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_rotation_new.x = -camera_rotation_speed;
+                        camera_pitch_delta = camera_rotation_speed;
                         break;
                     case NCTYPE_RELEASE:
-                        camera_rotation_new.x = RT_FLOAT(0.0);
+                        camera_pitch_delta = RT_FLOAT(0.0);
                         break;
                     default:
                         break;
@@ -423,12 +437,21 @@ int main([[maybe_unused]] int argc, char** argv)
             }
         }
 
+        camera_rotation_new.x       += camera_pitch_delta;
+        camera_rotation_new.x       = rt_clamp(camera_rotation_new.x,
+                                               RT_TO_RADIANS(RT_FLOAT(-89.0)),
+                                               RT_TO_RADIANS(RT_FLOAT( 89.0)));
+
+        camera_rotation_new.y       += camera_yaw_delta;
+
         camera_rotation             = rt_vec4_lerp(camera_rotation,
                                                    camera_rotation_new,
                                                    camera_smoothing * delta_time);
 
         camera_dir                  = rt_vec4_rotate_x(camera_dir, camera_rotation.x);
         camera_dir                  = rt_vec4_rotate_y(camera_dir, camera_rotation.y);
+
+        camera_z                    = camera_dir;
 
         camera_velocity_forward     = rt_vec4_lerp(camera_velocity_forward,
                                                    camera_velocity_forward_new,
@@ -494,15 +517,15 @@ int main([[maybe_unused]] int argc, char** argv)
                                                     rt_vec4_mul_scalar(camera_w,
                                                                        focal_length));
 
-        viewport_upper_left = rt_vec4_sub(viewport_upper_left, viewport_u_half);
-        viewport_upper_left = rt_vec4_sub(viewport_upper_left, viewport_v_half);
+        viewport_upper_left         = rt_vec4_sub(viewport_upper_left, viewport_u_half);
+        viewport_upper_left         = rt_vec4_sub(viewport_upper_left, viewport_v_half);
 
-        rt_vec4_t pixel00_loc = rt_vec4_add(viewport_upper_left, pixel_delta_diag);
+        rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left, pixel_delta_diag);
 
         rt_point_light_t* point_light = &world.point_light_buffer[point_light_index];
 
-        point_light->position.x = point_light_radius * cosf(total_time);
-        point_light->position.z = point_light_radius * sinf(total_time);
+        point_light->position.x     = point_light_radius * cosf(total_time);
+        point_light->position.z     = point_light_radius * sinf(total_time);
 
         for (uint32_t row = 0; row < rows; ++row) {
 
