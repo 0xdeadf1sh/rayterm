@@ -3,7 +3,6 @@
 -std=c23
 -Wall
 -Wextra
--Wpedantic
 -Wformat
 -Wformat=2
 -Wformat-security
