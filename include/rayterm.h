@@ -1551,15 +1551,20 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                                       farthestZ,
                                                       &hit_info_array[1]);
 
-    bool is_hit_any     = false;
-    uint32_t hit_idx    = 0;
+    bool is_hit_any         = false;
+    uint32_t hit_idx        = 0;
+    rt_float_t closest_z    = RT_FLOAT(0.0);
 
     for (uint32_t i = 0; i < RT_BUFFER_LEN(is_hit_bool_array); ++i) {
 
         if (is_hit_bool_array[i]) {
 
+            if (!is_hit_any || hit_info_array[i].info.t < closest_z) {
+                closest_z = hit_info_array[i].info.t;
+                hit_idx = i;
+            }
+        
             is_hit_any  = true;
-            hit_idx     = i;
         }
     }
 
@@ -1595,7 +1600,10 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
         return material->ambient;
     }
 
-    rt_vec4_t final_color = { 0.0f, 0.0f, 0.0f, 1.0f };
+    rt_vec4_t final_color = { RT_FLOAT(0.0),
+                              RT_FLOAT(0.0),
+                              RT_FLOAT(0.0),
+                              RT_FLOAT(1.0) };
 
     const rt_idx_t directional_light_count              = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
@@ -1607,12 +1615,15 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
 
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);
+
         rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_negate(light->direction));
 
         rt_vec4_t diffuse_color         = rt_vec4_mul(material->diffuse,
                                                       light_color);
+
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
                                                            hit_info->normal), 0.0f);
+
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
 
@@ -1629,18 +1640,93 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
 
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);
+
         rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_sub(light->position,
                                                                    hit_info->position));
 
         rt_vec4_t diffuse_color         = rt_vec4_mul(material->diffuse,
                                                       light_color);
+
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
                                                            hit_info->normal), 0.0f);
+
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
 
         final_color                     = rt_vec4_add(final_color,
                                                       diffuse);
+    }
+
+    final_color = rt_vec4_add(final_color, material->ambient);
+    return rt_vec4_clamp(final_color, 0.0f, 1.0f);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_info,
+                                             const rt_metallic_material_t*  material,
+                                             const rt_world_t*              world,
+                                             bool                           is_in_shadow)
+{
+    RT_ASSERT(hit_info  != NULL);
+    RT_ASSERT(material  != NULL);
+    RT_ASSERT(world     != NULL);
+
+    if (is_in_shadow && material->receives_shadows) {
+        return material->ambient;
+    }
+
+    rt_vec4_t final_color = { RT_FLOAT(0.0),
+                              RT_FLOAT(0.0),
+                              RT_FLOAT(0.0),
+                              RT_FLOAT(0.0) };
+
+    const rt_idx_t directional_light_count              = world->directional_light_count;
+    const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
+
+    for (rt_idx_t i = 0; i < directional_light_count; ++i) {
+
+        const rt_directional_light_t* light = &directional_lights[i];
+        RT_ASSERT(light != NULL);
+
+        rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
+                                                             light->intensity);
+
+        rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_negate(light->direction));
+
+        rt_vec4_t specular_color        = rt_vec4_mul(material->specular,
+                                                      light_color);
+
+        rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
+                                                           hit_info->normal), 0.0f);
+
+        rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
+                                                             diff);
+
+        final_color                     = rt_vec4_add(final_color,
+                                                      specular);
+    }
+
+    rt_idx_t point_light_count          = world->point_light_count;
+    const rt_point_light_t* point_lights= world->point_light_buffer;
+
+    for (rt_idx_t i = 0; i < point_light_count; ++i) {
+
+        const rt_point_light_t* light   = &point_lights[i];
+
+        rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
+                                                             light->intensity);
+        rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_sub(light->position,
+                                                                   hit_info->position));
+
+        rt_vec4_t specular_color        = rt_vec4_mul(material->specular,
+                                                      light_color);
+        rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
+                                                           hit_info->normal), 0.0f);
+        rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
+                                                             diff);
+
+        final_color                     = rt_vec4_add(final_color,
+                                                      specular);
     }
 
     final_color = rt_vec4_add(final_color, material->ambient);
@@ -1662,12 +1748,11 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
     rt_vec4_t material_color = (pos_quant & 1) ? material->color_0
                                                : material->color_1;
 
+
     if (is_in_shadow && material->receives_shadows) {
 
         rt_vec4_t final_color = rt_vec4_mul_scalar(material_color,
                                                    material->shadow_factor);
-
-        final_color.w = 1.0f;
 
         return final_color;
     }
@@ -1803,34 +1888,65 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
         return world->clear_color;
     }
 
+    rt_hit_ext_info_t hit_info_copy = hit_info;;
     bool is_in_shadow = rt_is_in_shadow(world,
-                                        &hit_info,
+                                        &hit_info_copy,
                                         nearestZ,
                                         farthestZ);
 
     switch (material_type) {
+
         case RT_MATERIAL_TYPE_emissive_material: {
+
             rt_emissive_material_t* m = &world->emissive_material_buffer[material_index];
+
             return rt_fragment_shader_emissive(m);
         }
         case RT_MATERIAL_TYPE_checkerboard_material: {
+
             rt_checkerboard_material_t* m = &world->checkerboard_material_buffer[material_index];
+
             return rt_fragment_shader_checkerboard(&hit_info.info,
                                                    m,
                                                    is_in_shadow);
         }
         case RT_MATERIAL_TYPE_diffuse_material: {
+
             rt_diffuse_material_t* m = &world->diffuse_material_buffer[material_index];
+
             return rt_fragment_shader_diffuse(&hit_info.info,
                                               m,
                                               world,
                                               is_in_shadow);
         }
-        /*
-        case RT_MATERIAL_METALLIC: {
-            rt_metallic_material_t* metallic_material = &world->metallic_materials[material_index];
-            return rt_fragment_shader_metallic(&hit_info, metallic_material, world->point_lights, world->point_light_count, false);
+        case RT_MATERIAL_TYPE_metallic_material: {
+
+            rt_vec4_t reflected_ray_dir = rt_vec4_reflect(ray.dir,
+                                                          hit_info.info.normal);
+
+            rt_vec4_t reflected_ray_pos = rt_vec4_add(hit_info.info.position,
+                                                      rt_vec4_mul_scalar(hit_info.info.normal,
+                                                                         RT_SHADOW_BIAS));
+
+            rt_ray_t reflected_ray = { .org = reflected_ray_pos,
+                                       .dir = reflected_ray_dir };
+
+            rt_vec4_t reflected_color = rt_world_compute_color(world,
+                                                               reflected_ray,
+                                                               nearestZ,
+                                                               farthestZ,
+                                                               depth - 1);
+
+            rt_metallic_material_t* m = &world->metallic_material_buffer[material_index];
+
+            rt_vec4_t fragment_shader_output =  rt_fragment_shader_metallic(&hit_info.info,
+                                                                            m,
+                                                                            world,
+                                                                            is_in_shadow);
+
+            return rt_vec4_mul(reflected_color, fragment_shader_output);
         }
+        /*
         case RT_MATERIAL_DIELECTRIC: {
             rt_dielectric_material_t* dielectric_material = &world->dielectric_materials[material_index];
             return rt_fragment_shader_dielectric(&hit_info, dielectric_material, world->point_lights, world->point_light_count, false);

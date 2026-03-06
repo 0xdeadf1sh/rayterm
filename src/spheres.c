@@ -95,7 +95,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
     rt_vec4_set(&world.clear_color,
                 RT_FLOAT(0.02),
-                RT_FLOAT(0.03),
+                RT_FLOAT(0.02),
                 RT_FLOAT(0.03),
                 RT_FLOAT(1.00));
 
@@ -119,32 +119,73 @@ int main([[maybe_unused]] int argc, char** argv)
                               plane_index,
                               plane_position,
                               plane_normal,
-                              RT_FLOAT(10.0));
+                              RT_FLOAT(50.0));
 
     rt_idx_t plane_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&world,
                                                                        &plane_material_index));
 
-    rt_vec4_t mat_color_0 = { RT_FLOAT(0.1),
-                              RT_FLOAT(0.1),
-                              RT_FLOAT(0.1),
+    rt_vec4_t mat_color_0 = { RT_FLOAT(0.5),
+                              RT_FLOAT(0.5),
+                              RT_FLOAT(0.5),
                               RT_FLOAT(1.0) };
 
-    rt_vec4_t mat_color_1 = { RT_FLOAT(0.9),
-                              RT_FLOAT(0.9),
-                              RT_FLOAT(0.9),
+    rt_vec4_t mat_color_1 = { RT_FLOAT(0.05),
+                              RT_FLOAT(0.05),
+                              RT_FLOAT(0.05),
                               RT_FLOAT(1.0) };
+
+    rt_float_t mat_shadow_factor    = RT_FLOAT(0.2);
+    bool mat_receives_shadows       = true;
 
     rt_world_set_checkerboard_material_params(&world,
                                               plane_material_index,
                                               mat_color_0,
                                               mat_color_1,
-                                              RT_FLOAT(0.2),
-                                              true);
+                                              mat_shadow_factor,
+                                              mat_receives_shadows);
 
     rt_plane_link_checkerboard_material(&world,
                                         plane_index,
                                         plane_material_index);
+
+    rt_idx_t sphere_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world, &sphere_index));
+
+    rt_vec4_t sphere_position = { RT_FLOAT(0.0),
+                                  RT_FLOAT(3.0),
+                                  RT_FLOAT(-10.0),
+                                  RT_FLOAT(1.0) };
+
+    float sphere_radius = RT_FLOAT(3.0);
+
+    rt_world_set_sphere_params(&world,
+                               sphere_index,
+                               sphere_position,
+                               sphere_radius);
+
+    rt_idx_t sphere_material_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_metallic_material(&world, &sphere_material_index));
+
+    rt_vec4_t sphere_material_ambience = { RT_FLOAT(0.02),
+                                           RT_FLOAT(0.04),
+                                           RT_FLOAT(0.08),
+                                           RT_FLOAT(1.0) };
+
+    rt_vec4_t sphere_material_specular = { RT_FLOAT(0.2),   
+                                           RT_FLOAT(0.4),
+                                           RT_FLOAT(0.8),
+                                           RT_FLOAT(1.0) };
+
+    rt_world_set_metallic_material_params(&world,
+                                          sphere_material_index,
+                                          sphere_material_ambience,
+                                          sphere_material_specular,
+                                          true);
+
+    rt_sphere_link_metallic_material(&world,
+                                     sphere_index,
+                                     sphere_material_index);
 
     rt_idx_t point_light_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&world,
@@ -164,7 +205,7 @@ int main([[maybe_unused]] int argc, char** argv)
                                     point_light_index,
                                     point_light_color,
                                     point_light_pos,
-                                    RT_FLOAT(2.0),
+                                    RT_FLOAT(3.0),
                                     true);
 
     struct ncvisual_options vopts = {};
@@ -179,12 +220,12 @@ int main([[maybe_unused]] int argc, char** argv)
 
     rt_vec4_t camera_z          = { RT_FLOAT(0.0),
                                     RT_FLOAT(0.0),
-                                    RT_FLOAT(-1.0),
+                                    RT_FLOAT(1.0),
                                     RT_FLOAT(0.0) };
 
     rt_vec4_t camera_center     = { RT_FLOAT(0.0),
                                     RT_FLOAT(0.0),
-                                    RT_FLOAT(0.0),
+                                    RT_FLOAT(-3.0),
                                     RT_FLOAT(1.0) };
 
     rt_vec4_t camera_up         = { RT_FLOAT(0.0),
@@ -257,7 +298,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
         rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
                                         RT_FLOAT(0.0),
-                                        RT_FLOAT(-1.0),
+                                        RT_FLOAT(1.0),
                                         RT_FLOAT(0.0) };
 
 
@@ -510,18 +551,24 @@ int main([[maybe_unused]] int argc, char** argv)
                                                                      pixel_delta_v),
                                                          RT_FLOAT(0.5));
 
-        rt_vec4_t viewport_u_half   = rt_vec4_mul_scalar(viewport_u, RT_FLOAT(0.5));
+        rt_vec4_t viewport_u_half   = rt_vec4_mul_scalar(viewport_u,
+                                                         RT_FLOAT(0.5));
 
-        rt_vec4_t viewport_v_half   = rt_vec4_mul_scalar(viewport_v, RT_FLOAT(0.5));
+        rt_vec4_t viewport_v_half   = rt_vec4_mul_scalar(viewport_v,
+                                                         RT_FLOAT(0.5));
 
         rt_vec4_t viewport_upper_left = rt_vec4_sub(camera_center,
                                                     rt_vec4_mul_scalar(camera_w,
                                                                        focal_length));
 
-        viewport_upper_left         = rt_vec4_sub(viewport_upper_left, viewport_u_half);
-        viewport_upper_left         = rt_vec4_sub(viewport_upper_left, viewport_v_half);
+        viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
+                                                  viewport_u_half);
 
-        rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left, pixel_delta_diag);
+        viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
+                                                  viewport_v_half);
+
+        rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left,
+                                                  pixel_delta_diag);
 
         rt_point_light_t* point_light = &world.point_light_buffer[point_light_index];
 
@@ -552,9 +599,10 @@ int main([[maybe_unused]] int argc, char** argv)
                                                                r,
                                                                RT_FLOAT(0.1),
                                                                RT_FLOAT(1000.0),
-                                                               10);
+                                                               3);
                 pixel_color = rt_vec4_apply_2(pixel_color,
-                                              rt_apply_gamma_custom, RT_GAMMA_INVERSE);
+                                              rt_apply_gamma_custom,
+                                              RT_GAMMA_INVERSE);
 
                 rt_framebuffer_write(row, col, pixel_color, &framebuffer);
             }
