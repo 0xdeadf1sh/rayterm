@@ -29,26 +29,9 @@
 #include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////
-//////////////////////////////// DEFINES //////////////////////////////////
+////////////////////////////////// API ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #define RT_API                          static inline
-
-///////////////////////////////////////////////////////////////////////////
-#ifdef RT_USE_FLOAT64
-#define RT_FLOAT(X)                     X
-#else
-#define RT_FLOAT(X)                     X ## f
-#endif
-
-///////////////////////////////////////////////////////////////////////////
-#define RT_GAMMA                        RT_FLOAT(2.2)
-#define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
-#define RT_PI                           RT_FLOAT(3.1415926)
-#define RT_EPSILON                      RT_FLOAT(0.000001)
-#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
-
-///////////////////////////////////////////////////////////////////////////
-#define RT_INIT_CAP                     8
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// TYPES ///////////////////////////////////
@@ -56,25 +39,47 @@
 
 ///////////////////////////////////////////////////////////////////////////
 #ifdef RT_USE_FLOAT64
+
+#define RT_FLOAT(X)                     X
 typedef double rt_float_t;
+
 #else
+
+#define RT_FLOAT(X)                     X ## f
 typedef float rt_float_t;
+
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
 #ifdef RT_USE_IDX64
+
 typedef int64_t rt_idx_t;
 
 #define RT_IDX_MIN INT64_MIN
 #define RT_IDX_MAX INT64_MAX
 
 #else
+
 typedef int32_t rt_idx_t;
 
 #define RT_IDX_MIN INT32_MIN
 #define RT_IDX_MAX INT32_MAX
 
 #endif
+
+///////////////////////////////////////////////////////////////////////////
+////////////////////////////// CONSTANTS //////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+#define RT_GAMMA                        RT_FLOAT(2.2)
+#define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
+#define RT_PI                           RT_FLOAT(3.1415926)
+#define RT_EPSILON                      RT_FLOAT(0.000001)
+#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
+#define RT_INIT_CAP                     8
+
+///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// ASSERTIONS ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
 enum rt_status
@@ -727,7 +732,13 @@ typedef struct
 {
     rt_vec4_t               center;
     rt_float_t              radius;
+}
+rt_sphere_params_t;
 
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_sphere_params_t      geometry_params;
     rt_idx_t                material_index;
     enum rt_material_type   material_type;
 }
@@ -739,7 +750,13 @@ typedef struct
     rt_vec4_t               position;
     rt_vec4_t               normal;
     rt_float_t              side_length;
+}
+rt_plane_params_t;
 
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_plane_params_t       geometry_params;
     rt_idx_t                material_index;
     enum rt_material_type   material_type;
 }
@@ -755,10 +772,13 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
     RT_ASSERT(info      != NULL);
     RT_ASSERT(nearestZ  <= farthestZ);
 
-    rt_vec4_t oc    = rt_vec4_sub(sphere.center, ray.org);
+    rt_float_t sphere_radius = sphere.geometry_params.radius;
+    rt_vec4_t sphere_center  = sphere.geometry_params.center;
+
+    rt_vec4_t oc    = rt_vec4_sub(sphere.geometry_params.center, ray.org);
     rt_float_t a    = rt_vec4_sqrlen(ray.dir);
     rt_float_t h    = rt_vec4_dot(ray.dir, oc);
-    rt_float_t c    = rt_vec4_sqrlen(oc) - sphere.radius * sphere.radius;
+    rt_float_t c    = rt_vec4_sqrlen(oc) - sphere_radius * sphere_radius;
 
     rt_float_t disc = h * h - a * c;
     if (disc < RT_FLOAT(0.0)) {
@@ -785,8 +805,8 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
 
     info->position          = rt_ray_at(ray, root_chosen);
 
-    rt_vec4_t n             = rt_vec4_sub(info->position, sphere.center);
-    n                       = rt_vec4_div_scalar(n, sphere.radius);
+    rt_vec4_t n             = rt_vec4_sub(info->position, sphere_center);
+    n                       = rt_vec4_div_scalar(n, sphere_radius);
 
     info->normal            = rt_vec4_norm(n);
     info->t                 = root_chosen;
@@ -805,7 +825,11 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
     RT_ASSERT(info      != NULL);
     RT_ASSERT(nearestZ  <= farthestZ);
 
-    rt_vec4_t negated_plane_normal = rt_vec4_negate(plane.normal)   ;
+    rt_vec4_t plane_position        = plane.geometry_params.position;
+    rt_vec4_t plane_normal          = plane.geometry_params.normal;
+    rt_float_t plane_side_length    = plane.geometry_params.side_length;
+
+    rt_vec4_t negated_plane_normal = rt_vec4_negate(plane_normal);
 
     rt_float_t denom = rt_vec4_dot(negated_plane_normal,
                                    ray.dir);
@@ -814,7 +838,7 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
         return false;
     }
 
-    rt_vec4_t dir = rt_vec4_sub(plane.position,
+    rt_vec4_t dir = rt_vec4_sub(plane_position,
                                 ray.org);
 
     rt_float_t t = rt_vec4_dot(dir,
@@ -822,13 +846,13 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
 
     rt_vec4_t hit_position = rt_ray_at(ray, t);
 
-    rt_float_t diff_x = fabs(hit_position.x - plane.position.x);
-    rt_float_t diff_y = fabs(hit_position.y - plane.position.y);
-    rt_float_t diff_z = fabs(hit_position.z - plane.position.z);
+    rt_float_t diff_x = fabs(hit_position.x - plane_position.x);
+    rt_float_t diff_y = fabs(hit_position.y - plane_position.y);
+    rt_float_t diff_z = fabs(hit_position.z - plane_position.z);
 
-    if (diff_x > plane.side_length ||
-        diff_y > plane.side_length ||
-        diff_z > plane.side_length) {
+    if (diff_x > plane_side_length ||
+        diff_y > plane_side_length ||
+        diff_z > plane_side_length) {
 
         return false;
     }
@@ -1195,15 +1219,13 @@ RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_directional_light_params(rt_world_t*   world,
-                                                  rt_idx_t      light_index,
-                                                  rt_vec4_t     color,
-                                                  rt_vec4_t     direction,
-                                                  rt_float_t    intensity,
-                                                  bool          casts_shadows)
+RT_API void rt_world_set_directional_light_params(rt_world_t*                    world,
+                                                  rt_idx_t                       light_index,
+                                                  const rt_directional_light_t*  light_params)
 {
     RT_ASSERT(world         != NULL);
     RT_ASSERT(light_index   >= 0);
+    RT_ASSERT(light_params  != NULL);
 
     rt_directional_light_t* light_buffer = world->directional_light_buffer;
     RT_ASSERT(light_buffer != NULL);
@@ -1211,22 +1233,17 @@ RT_API void rt_world_set_directional_light_params(rt_world_t*   world,
     rt_directional_light_t* light = &light_buffer[light_index];
     RT_ASSERT(light != NULL);
 
-    light->color            = color;
-    light->direction        = direction;
-    light->intensity        = intensity;
-    light->casts_shadows    = casts_shadows;
+    memcpy(light, light_params, sizeof(rt_directional_light_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_point_light_params(rt_world_t*     world,
-                                            rt_idx_t        light_index,
-                                            rt_vec4_t       color,
-                                            rt_vec4_t       position,
-                                            rt_float_t      intensity,
-                                            bool            casts_shadows)
+RT_API void rt_world_set_point_light_params(rt_world_t*              world,
+                                            rt_idx_t                 light_index,
+                                            const rt_point_light_t*  light_params)
 {
     RT_ASSERT(world         != NULL);
     RT_ASSERT(light_index   >= 0);
+    RT_ASSERT(light_params  != NULL);
 
     rt_point_light_t* light_buffer = world->point_light_buffer;
     RT_ASSERT(light_buffer != NULL);
@@ -1234,20 +1251,17 @@ RT_API void rt_world_set_point_light_params(rt_world_t*     world,
     rt_point_light_t* light = &light_buffer[light_index];
     RT_ASSERT(light != NULL);
 
-    light->color            = color;
-    light->position         = position;
-    light->intensity        = intensity;
-    light->casts_shadows    = casts_shadows;
+    memcpy(light, light_params, sizeof(rt_point_light_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_sphere_params(rt_world_t*          world,
-                                       rt_idx_t             sphere_index,
-                                       rt_vec4_t            sphere_center,
-                                       rt_float_t           sphere_radius)
+RT_API void rt_world_set_sphere_params(rt_world_t*                  world,
+                                       rt_idx_t                     sphere_index,
+                                       const rt_sphere_params_t*    sphere_params)
 {
     RT_ASSERT(world         != NULL);
     RT_ASSERT(sphere_index  >= 0);
+    RT_ASSERT(sphere_params != NULL);
 
     rt_sphere_t* sphere_buffer = world->sphere_buffer;
     RT_ASSERT(sphere_buffer != NULL);
@@ -1255,19 +1269,19 @@ RT_API void rt_world_set_sphere_params(rt_world_t*          world,
     rt_sphere_t* sphere = &sphere_buffer[sphere_index];
     RT_ASSERT(sphere != NULL);
 
-    sphere->center = sphere_center;
-    sphere->radius = sphere_radius;
+    memcpy(&sphere->geometry_params,
+           sphere_params,
+           sizeof(rt_sphere_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_plane_params(rt_world_t*           world,
-                                      rt_idx_t              plane_index,
-                                      rt_vec4_t             plane_position,
-                                      rt_vec4_t             plane_normal,
-                                      rt_float_t            plane_side_length)
+RT_API void rt_world_set_plane_params(rt_world_t*               world,
+                                      rt_idx_t                  plane_index,
+                                      const rt_plane_params_t*  plane_params)
 {
     RT_ASSERT(world         != NULL);
     RT_ASSERT(plane_index   >= 0);
+    RT_ASSERT(plane_params  != NULL);
 
     rt_plane_t* plane_buffer = world->plane_buffer;
     RT_ASSERT(plane_buffer != NULL);
@@ -1275,18 +1289,19 @@ RT_API void rt_world_set_plane_params(rt_world_t*           world,
     rt_plane_t* plane = &plane_buffer[plane_index];
     RT_ASSERT(plane != NULL);
 
-    plane->position     = plane_position;
-    plane->normal       = plane_normal;
-    plane->side_length  = plane_side_length;
+    memcpy(&plane->geometry_params,
+           plane_params,
+           sizeof(rt_plane_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_emissive_material_params(rt_world_t*   world,
-                                                  rt_idx_t      material_index,
-                                                  rt_vec4_t     color)
+RT_API void rt_world_set_emissive_material_params(rt_world_t*                    world,
+                                                  rt_idx_t                       material_index,
+                                                  const rt_emissive_material_t*  material_params)
 {
     RT_ASSERT(world             != NULL);
     RT_ASSERT(material_index    >= 0);
+    RT_ASSERT(material_params   != NULL);
 
     rt_emissive_material_t* material_buffer = world->emissive_material_buffer;
     RT_ASSERT(material_buffer != NULL);
@@ -1294,19 +1309,17 @@ RT_API void rt_world_set_emissive_material_params(rt_world_t*   world,
     rt_emissive_material_t* material = &material_buffer[material_index];
     RT_ASSERT(material != NULL);
 
-    material->color = color;
+    memcpy(material, material_params, sizeof(rt_emissive_material_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_checkerboard_material_params(rt_world_t*   world,
-                                                      rt_idx_t      material_index,
-                                                      rt_vec4_t     color_0,
-                                                      rt_vec4_t     color_1,
-                                                      rt_float_t    shadow_factor,
-                                                      bool          receives_shadows)
+RT_API void rt_world_set_checkerboard_material_params(rt_world_t*                        world,
+                                                      rt_idx_t                           material_index,
+                                                      const rt_checkerboard_material_t*  material_params)
 {
     RT_ASSERT(world             != NULL);
     RT_ASSERT(material_index    >= 0);
+    RT_ASSERT(material_params   != NULL);
 
     rt_checkerboard_material_t* material_buffer = world->checkerboard_material_buffer;
     RT_ASSERT(material_buffer != NULL);
@@ -1314,21 +1327,17 @@ RT_API void rt_world_set_checkerboard_material_params(rt_world_t*   world,
     rt_checkerboard_material_t* material = &material_buffer[material_index];
     RT_ASSERT(material != NULL);
 
-    material->color_0           = color_0;
-    material->color_1           = color_1;
-    material->shadow_factor     = shadow_factor;
-    material->receives_shadows  = receives_shadows;
+    memcpy(material, material_params, sizeof(rt_checkerboard_material_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_diffuse_material_params(rt_world_t*    world,
-                                                 rt_idx_t       material_index,
-                                                 rt_vec4_t      ambient,
-                                                 rt_vec4_t      diffuse,
-                                                 bool           receives_shadows)
+RT_API void rt_world_set_diffuse_material_params(rt_world_t*                     world,
+                                                 rt_idx_t                        material_index,
+                                                 const rt_diffuse_material_t*    material_params)
 {
     RT_ASSERT(world             != NULL);
     RT_ASSERT(material_index    >= 0);
+    RT_ASSERT(material_params   != NULL);
 
     rt_diffuse_material_t* material_buffer = world->diffuse_material_buffer;
     RT_ASSERT(material_buffer != NULL);
@@ -1336,20 +1345,17 @@ RT_API void rt_world_set_diffuse_material_params(rt_world_t*    world,
     rt_diffuse_material_t* material = &material_buffer[material_index];
     RT_ASSERT(material != NULL);
 
-    material->ambient           = ambient;
-    material->diffuse           = diffuse;
-    material->receives_shadows  = receives_shadows;
+    memcpy(material, material_params, sizeof(rt_diffuse_material_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_metallic_material_params(rt_world_t*   world,
-                                                  rt_idx_t      material_index,
-                                                  rt_vec4_t     ambient,
-                                                  rt_vec4_t     specular,
-                                                  bool          receives_shadows)
+RT_API void rt_world_set_metallic_material_params(rt_world_t*                    world,
+                                                  rt_idx_t                       material_index,
+                                                  const rt_metallic_material_t*  material_params)
 {
     RT_ASSERT(world             != NULL);
     RT_ASSERT(material_index    >= 0);
+    RT_ASSERT(material_params   != NULL);
 
     rt_metallic_material_t* material_buffer = world->metallic_material_buffer;
     RT_ASSERT(material_buffer != NULL);
@@ -1357,21 +1363,17 @@ RT_API void rt_world_set_metallic_material_params(rt_world_t*   world,
     rt_metallic_material_t* material = &material_buffer[material_index];
     RT_ASSERT(material != NULL);
 
-    material->ambient           = ambient;
-    material->specular          = specular;
-    material->receives_shadows  = receives_shadows;
+    memcpy(material, material_params, sizeof(rt_metallic_material_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_dielectric_material_params(rt_world_t*     world,
-                                                    rt_idx_t        material_index,
-                                                    rt_vec4_t       ambient,
-                                                    rt_vec4_t       specular,
-                                                    rt_float_t      refractive_index,
-                                                    bool            receives_shadows)
+RT_API void rt_world_set_dielectric_material_params(rt_world_t*                      world,
+                                                    rt_idx_t                         material_index,
+                                                    const rt_dielectric_material_t*  material_params)
 {
     RT_ASSERT(world             != NULL);
     RT_ASSERT(material_index    >= 0);
+    RT_ASSERT(material_params   != NULL);
 
     rt_dielectric_material_t* material_buffer = world->dielectric_material_buffer;
     RT_ASSERT(material_buffer != NULL);
@@ -1379,10 +1381,7 @@ RT_API void rt_world_set_dielectric_material_params(rt_world_t*     world,
     rt_dielectric_material_t* material = &material_buffer[material_index];
     RT_ASSERT(material != NULL);
 
-    material->ambient           = ambient;
-    material->specular          = specular;
-    material->refractive_index  = refractive_index;
-    material->receives_shadows  = receives_shadows;
+    memcpy(material, material_params, sizeof(rt_dielectric_material_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1551,28 +1550,27 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                                       farthestZ,
                                                       &hit_info_array[1]);
 
-    bool is_hit_any         = false;
-    uint32_t hit_idx        = 0;
+    rt_idx_t hit_idx        = -1;
     rt_float_t closest_z    = RT_FLOAT(0.0);
 
     for (uint32_t i = 0; i < RT_BUFFER_LEN(is_hit_bool_array); ++i) {
 
         if (is_hit_bool_array[i]) {
 
-            if (!is_hit_any || hit_info_array[i].info.t < closest_z) {
-                closest_z = hit_info_array[i].info.t;
-                hit_idx = i;
+            if (-1 == hit_idx || hit_info_array[i].info.t < closest_z) {
+
+                closest_z   = hit_info_array[i].info.t;
+                hit_idx     = (rt_idx_t)i;
+
             }
-        
-            is_hit_any  = true;
         }
     }
 
-    if (is_hit_any) {
-        *info = hit_info_array[hit_idx];
+    if (hit_idx >= 0) {
+        memcpy(info, &hit_info_array[hit_idx], sizeof(rt_hit_ext_info_t));
     }
 
-    return is_hit_any;
+    return hit_idx >= 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1712,6 +1710,7 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
         const rt_point_light_t* light   = &point_lights[i];
+        RT_ASSERT(light != NULL);
 
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);

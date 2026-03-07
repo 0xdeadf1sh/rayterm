@@ -105,45 +105,47 @@ int main([[maybe_unused]] int argc, char** argv)
     RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&world,
                                                        &plane_index));
 
-    rt_vec4_t plane_position = { RT_FLOAT(0.0),
-                                 RT_FLOAT(-5.0),
-                                 RT_FLOAT(0.0),
-                                 RT_FLOAT(1.0) };
+    rt_plane_params_t plane_params = {
 
-    rt_vec4_t plane_normal = { RT_FLOAT(0.0),
-                               RT_FLOAT(1.0),
-                               RT_FLOAT(0.0),
-                               RT_FLOAT(0.0) };
+        .position = { RT_FLOAT( 0.0),
+                      RT_FLOAT(-5.0),
+                      RT_FLOAT( 0.0),
+                      RT_FLOAT( 1.0), },
 
-    rt_world_set_plane_params(&world,
-                              plane_index,
-                              plane_position,
-                              plane_normal,
-                              RT_FLOAT(50.0));
+        .normal = { RT_FLOAT(0.0),
+                    RT_FLOAT(1.0),
+                    RT_FLOAT(0.0),
+                    RT_FLOAT(0.0), },
+
+        .side_length = RT_FLOAT(50.0),
+    };
+
+    rt_world_set_plane_params(&world, plane_index, &plane_params);
 
     rt_idx_t plane_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&world,
                                                                        &plane_material_index));
 
-    rt_vec4_t mat_color_0 = { RT_FLOAT(0.5),
-                              RT_FLOAT(0.5),
-                              RT_FLOAT(0.5),
-                              RT_FLOAT(1.0) };
+    rt_checkerboard_material_t mat_params = {
 
-    rt_vec4_t mat_color_1 = { RT_FLOAT(0.05),
-                              RT_FLOAT(0.05),
-                              RT_FLOAT(0.05),
-                              RT_FLOAT(1.0) };
+        .color_0 = { RT_FLOAT(0.5),
+                     RT_FLOAT(0.5),
+                     RT_FLOAT(0.5),
+                     RT_FLOAT(1.0), },
 
-    rt_float_t mat_shadow_factor    = RT_FLOAT(0.2);
-    bool mat_receives_shadows       = true;
+        .color_1 = { RT_FLOAT(0.05),
+                     RT_FLOAT(0.05),
+                     RT_FLOAT(0.05),
+                     RT_FLOAT(1.0), },
+
+        .shadow_factor      = RT_FLOAT(0.2),
+
+        .receives_shadows   = true,
+    };
 
     rt_world_set_checkerboard_material_params(&world,
                                               plane_material_index,
-                                              mat_color_0,
-                                              mat_color_1,
-                                              mat_shadow_factor,
-                                              mat_receives_shadows);
+                                              &mat_params);
 
     rt_plane_link_checkerboard_material(&world,
                                         plane_index,
@@ -152,36 +154,41 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_idx_t sphere_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world, &sphere_index));
 
-    rt_vec4_t sphere_position = { RT_FLOAT(0.0),
-                                  RT_FLOAT(3.0),
-                                  RT_FLOAT(-10.0),
-                                  RT_FLOAT(1.0) };
+    rt_sphere_params_t sphere_params = {
+        .center = { RT_FLOAT( 0.0),
+                    RT_FLOAT( 3.0),
+                    RT_FLOAT(-10.0),
+                    RT_FLOAT( 1.0), },
 
-    float sphere_radius = RT_FLOAT(3.0);
+        .radius = RT_FLOAT(3.0),
+    };
 
     rt_world_set_sphere_params(&world,
                                sphere_index,
-                               sphere_position,
-                               sphere_radius);
+                               &sphere_params);
 
     rt_idx_t sphere_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_metallic_material(&world, &sphere_material_index));
 
-    rt_vec4_t sphere_material_ambience = { RT_FLOAT(0.02),
-                                           RT_FLOAT(0.04),
-                                           RT_FLOAT(0.08),
-                                           RT_FLOAT(1.0) };
+    rt_metallic_material_t sphere_mat_params = {
+        
+        .ambient = { RT_FLOAT(0.02),
+                     RT_FLOAT(0.04),
+                     RT_FLOAT(0.08),
+                     RT_FLOAT(1.0), },
 
-    rt_vec4_t sphere_material_specular = { RT_FLOAT(0.2),   
-                                           RT_FLOAT(0.4),
-                                           RT_FLOAT(0.8),
-                                           RT_FLOAT(1.0) };
+        .specular = { RT_FLOAT(0.2),   
+                      RT_FLOAT(0.4),
+                      RT_FLOAT(0.8),
+                      RT_FLOAT(1.0), },
+
+        .receives_shadows = true,
+    };
+
 
     rt_world_set_metallic_material_params(&world,
                                           sphere_material_index,
-                                          sphere_material_ambience,
-                                          sphere_material_specular,
-                                          true);
+                                          &sphere_mat_params);
 
     rt_sphere_link_metallic_material(&world,
                                      sphere_index,
@@ -191,22 +198,26 @@ int main([[maybe_unused]] int argc, char** argv)
     RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&world,
                                                              &point_light_index));
 
-    rt_vec4_t point_light_pos = { RT_FLOAT(0.0),
-                                  RT_FLOAT(10.0),
-                                  RT_FLOAT(-5.0),
-                                  RT_FLOAT(1.0) };
+    rt_point_light_t point_light_params = {
 
-    rt_vec4_t point_light_color = { RT_FLOAT(0.25),
-                                    RT_FLOAT(0.5),
-                                    RT_FLOAT(1.0),
-                                    RT_FLOAT(1.0) };
+        .color = { RT_FLOAT(0.25),
+                   RT_FLOAT(0.5),
+                   RT_FLOAT(1.0),
+                   RT_FLOAT(1.0), },
+
+        .position = { RT_FLOAT(0.0),
+                      RT_FLOAT(10.0),
+                      RT_FLOAT(-5.0),
+                      RT_FLOAT(1.0), },
+
+        .casts_shadows = true,
+        .intensity = RT_FLOAT(3.0),
+    };
+
 
     rt_world_set_point_light_params(&world,
                                     point_light_index,
-                                    point_light_color,
-                                    point_light_pos,
-                                    RT_FLOAT(3.0),
-                                    true);
+                                    &point_light_params);
 
     struct ncvisual_options vopts = {};
     vopts.n         = nstd;
