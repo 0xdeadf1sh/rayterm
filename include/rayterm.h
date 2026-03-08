@@ -277,7 +277,7 @@ RT_API rt_vec4_t rt_vec4_sub_scalar(rt_vec4_t   p,
                                     rt_float_t  k)
 {
     p.x -= k;
-    p.y -= k;
+p.y -= k;
     p.z -= k;
     p.w -= k;
 
@@ -2075,5 +2075,423 @@ RT_API void rt_framebuffer_free(rt_framebuffer_t* framebuffer)
         framebuffer->rgb_buffer = NULL;
     }
 }
+
+///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// FPS CAMERA ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_vec4_t   y_axis;
+    rt_vec4_t   z_axis;
+
+    rt_vec4_t   position;
+    rt_vec4_t   rotation;
+    rt_vec4_t   rotation_new;
+
+    rt_vec4_t   velocity_x;
+    rt_vec4_t   velocity_y;
+    rt_vec4_t   velocity_z;
+
+    rt_vec4_t   velocity_new_x;
+    rt_vec4_t   velocity_new_y;
+    rt_vec4_t   velocity_new_z;
+
+    rt_float_t  fovy;
+    rt_float_t  sensitivity;
+    rt_float_t  smoothing;
+    rt_float_t  movement_speed;
+    rt_float_t  rotation_speed;
+
+    rt_float_t  pitch_delta;
+    rt_float_t  yaw_delta;
+
+    rt_idx_t    depth;
+
+    rt_float_t  near;
+    rt_float_t  far;
+}
+rt_fps_camera_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_fps_camera_t rt_fps_camera_create()
+{
+    rt_fps_camera_t camera = {
+
+        .y_axis         = { RT_FLOAT(0.0),
+                            RT_FLOAT(1.0),
+                            RT_FLOAT(0.0),
+                            RT_FLOAT(0.0), },
+
+        .z_axis         = { RT_FLOAT(0.0),
+                            RT_FLOAT(0.0),
+                            RT_FLOAT(1.0),
+                            RT_FLOAT(0.0), },
+
+        .position       = { RT_FLOAT( 0.0),
+                            RT_FLOAT( 0.0),
+                            RT_FLOAT(-5.0),
+                            RT_FLOAT( 1.0), },
+
+        .rotation       = {},
+        .rotation_new   = {},
+
+        .velocity_x     = {},
+        .velocity_y     = {},
+        .velocity_z     = {},
+
+        .velocity_new_x = {},
+        .velocity_new_y = {},
+        .velocity_new_z = {},
+
+        .fovy           = RT_PI * RT_FLOAT(0.5),
+
+        .sensitivity    = RT_FLOAT(0.1),
+        .smoothing      = RT_FLOAT(0.01),
+        .movement_speed = RT_FLOAT(0.5),
+        .rotation_speed = RT_FLOAT(0.05),
+
+        .pitch_delta    = RT_FLOAT(0.0),
+        .yaw_delta      = RT_FLOAT(0.0),
+
+        .depth          = 3,
+
+        .near           = RT_FLOAT(0.3),
+        .far            = RT_FLOAT(1000.0),
+    };
+
+    return camera;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_forward(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_z = rt_vec4_negate(rt_vec4_mul_scalar(camera->z_axis,
+                                                               camera->movement_speed));
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_forward(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_zero(&camera->velocity_new_z);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_backward(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_z = rt_vec4_mul_scalar(camera->z_axis,
+                                                camera->movement_speed);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_backward(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_zero(&camera->velocity_new_z);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_left(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera->y_axis,
+                                                                     camera->z_axis)), camera->movement_speed);
+
+    camera->velocity_new_x = rt_vec4_negate(strafe);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_left(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_zero(&camera->velocity_new_x);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_right(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera->y_axis,
+                                                                     camera->z_axis)), camera->movement_speed);
+
+    camera->velocity_new_x = strafe;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_right(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    rt_vec4_zero(&camera->velocity_new_x);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_rotate_left(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->yaw_delta = camera->rotation_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_rotating_left(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->yaw_delta = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_rotate_right(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->yaw_delta = -camera->rotation_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_rotating_right(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->yaw_delta = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_rotate_down(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->pitch_delta = -camera->rotation_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_rotating_down(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->pitch_delta = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_rotate_up(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->pitch_delta = camera->rotation_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_rotating_up(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->pitch_delta = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_up(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_y.y = camera->movement_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_up(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_y.y = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_move_down(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_y.y = -camera->movement_speed;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_stop_moving_down(rt_fps_camera_t* camera)
+{
+    RT_ASSERT(camera != NULL);
+
+    camera->velocity_new_y.y = RT_FLOAT(0.0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
+                                 const rt_world_t*      world,
+                                 rt_framebuffer_t*      framebuffer,
+                                 rt_float_t             delta_time)
+{
+    RT_ASSERT(camera            != NULL);
+    RT_ASSERT(world             != NULL);
+    RT_ASSERT(framebuffer       != NULL);
+
+    uint32_t cols               = framebuffer->width;
+    uint32_t rows               = framebuffer->height;
+
+    rt_float_t aspect           = (rt_float_t)cols / (rt_float_t)(rows * 2);
+
+    rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
+                                    RT_FLOAT(0.0),
+                                    RT_FLOAT(1.0),
+                                    RT_FLOAT(0.0) };
+
+    camera->rotation_new.x      += camera->pitch_delta;
+    camera->rotation_new.x      = rt_clamp(camera->rotation_new.x,
+                                           RT_TO_RADIANS(RT_FLOAT(-89.0)),
+                                           RT_TO_RADIANS(RT_FLOAT( 89.0)));
+
+    camera->rotation_new.y      += camera->yaw_delta;
+
+    camera->rotation            = rt_vec4_lerp(camera->rotation,
+                                               camera->rotation_new,
+                                               camera->smoothing * delta_time);
+
+    camera_dir                  = rt_vec4_rotate_x(camera_dir, camera->rotation.x);
+    camera_dir                  = rt_vec4_rotate_y(camera_dir, camera->rotation.y);
+
+    camera->z_axis              = camera_dir;
+
+    camera->velocity_z          = rt_vec4_lerp(camera->velocity_z,
+                                               camera->velocity_new_z,
+                                               camera->smoothing * delta_time);
+
+    camera->velocity_x          = rt_vec4_lerp(camera->velocity_x,
+                                               camera->velocity_new_x,
+                                               camera->smoothing * delta_time);
+
+    camera->velocity_y          = rt_vec4_lerp(camera->velocity_y,
+                                               camera->velocity_new_y,
+                                               camera->smoothing * delta_time);
+
+    rt_vec4_t total_velocity    = rt_vec4_add(camera->velocity_z,
+                                              camera->velocity_x);
+
+    total_velocity              = rt_vec4_add(total_velocity,
+                                              camera->velocity_y);
+
+    camera->position            = rt_vec4_add(camera->position,
+                                              total_velocity);
+
+    rt_vec4_t camera_look_at    = rt_vec4_sub(camera->position,
+                                              camera_dir);
+
+    rt_float_t focal_length     = rt_vec4_dist(camera->position,
+                                               camera_look_at);
+
+    rt_float_t camera_h         = tanf(camera->fovy * RT_FLOAT(0.5));
+
+    rt_float_t viewport_height  = RT_FLOAT(2.0) * camera_h * focal_length;
+
+    rt_float_t viewport_width   = viewport_height * aspect;
+
+    rt_vec4_t camera_w          = rt_vec4_norm(rt_vec4_sub(camera->position,
+                                                           camera_look_at));
+
+    rt_vec4_t camera_u          = rt_vec4_norm(rt_vec4_cross(camera->y_axis,
+                                                             camera_w));
+
+    rt_vec4_t camera_v          = rt_vec4_norm(rt_vec4_cross(camera_w,
+                                                             camera_u));
+
+    rt_vec4_t viewport_u        = rt_vec4_mul_scalar(camera_u,
+                                                     viewport_width);
+
+    rt_vec4_t viewport_v        = rt_vec4_mul_scalar(rt_vec4_negate(camera_v),
+                                                     viewport_height);
+
+    rt_vec4_t pixel_delta_u     = rt_vec4_div_scalar(viewport_u, (rt_float_t)cols);
+
+    rt_vec4_t pixel_delta_v     = rt_vec4_div_scalar(viewport_v, (rt_float_t)rows);
+
+    rt_vec4_t pixel_delta_diag  = rt_vec4_mul_scalar(rt_vec4_add(pixel_delta_u,
+                                                                 pixel_delta_v),
+                                                     RT_FLOAT(0.5));
+
+    rt_vec4_t viewport_u_half   = rt_vec4_mul_scalar(viewport_u,
+                                                     RT_FLOAT(0.5));
+
+    rt_vec4_t viewport_v_half   = rt_vec4_mul_scalar(viewport_v,
+                                                     RT_FLOAT(0.5));
+
+    rt_vec4_t viewport_upper_left = rt_vec4_sub(camera->position,
+                                                rt_vec4_mul_scalar(camera_w,
+                                                                   focal_length));
+
+    viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
+                                              viewport_u_half);
+
+    viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
+                                              viewport_v_half);
+
+    rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left,
+                                              pixel_delta_diag);
+
+    for (uint32_t row = 0; row < rows; ++row) {
+
+        rt_vec4_t ver = rt_vec4_mul_scalar(pixel_delta_v, (rt_float_t)row);
+
+        for (uint32_t col = 0; col < cols; ++col) {
+
+            rt_vec4_t hor           = rt_vec4_mul_scalar(pixel_delta_u,
+                                                         (rt_float_t)col);
+
+            rt_vec4_t pixel_center  = rt_vec4_add(pixel00_loc,
+                                                  rt_vec4_add(hor, ver));
+
+            rt_vec4_t ray_dir       = rt_vec4_sub(pixel_center,
+                                                  camera->position);
+
+            rt_ray_t r = {
+                .dir = ray_dir,
+                .org = camera->position,
+            };
+
+            rt_vec4_t pixel_color = rt_world_compute_color(world,
+                                                           r,
+                                                           camera->near,
+                                                           camera->far,
+                                                           camera->depth);
+
+            pixel_color = rt_vec4_apply_2(pixel_color,
+                                          rt_apply_gamma_custom,
+                                          RT_GAMMA_INVERSE);
+
+            rt_framebuffer_write(row, col, pixel_color, framebuffer);
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+/////////////////////////// NOTCURSES SURFACE /////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef RT_USE_NOTCURSES
+
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+/////////////////////// SDL INPUT (FOR JOYSTICKS) /////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef RT_USE_SDL3
+
+#endif
 
 #endif // RT_RAYTERM_H

@@ -27,6 +27,8 @@
 #include <unistd.h>
 #include <assert.h>
 
+/*
+
 ///////////////////////////////////////////////////////////////////////////
 static SDL_Gamepad* retrieveGamepad()
 {
@@ -52,6 +54,8 @@ static SDL_Gamepad* retrieveGamepad()
     return gamepad;
 }
 
+*/
+
 ///////////////////////////////////////////////////////////////////////////
 int main([[maybe_unused]] int argc, char** argv)
 {
@@ -60,7 +64,9 @@ int main([[maybe_unused]] int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    /*
     SDL_Gamepad* gamepad = retrieveGamepad();
+    */
 
     if (!setlocale(LC_ALL, "")) {
         fprintf(stderr, "%s: setlocale(LC_ALL, \"\") failed\n", argv[0]);
@@ -260,40 +266,7 @@ int main([[maybe_unused]] int argc, char** argv)
 
     bool is_running = true;
 
-    rt_vec4_t camera_z          = { RT_FLOAT(0.0),
-                                    RT_FLOAT(0.0),
-                                    RT_FLOAT(1.0),
-                                    RT_FLOAT(0.0) };
-
-    rt_vec4_t camera_center     = { RT_FLOAT(0.0),
-                                    RT_FLOAT(0.0),
-                                    RT_FLOAT(-3.0),
-                                    RT_FLOAT(1.0) };
-
-    rt_vec4_t camera_up         = { RT_FLOAT(0.0),
-                                    RT_FLOAT(1.0),
-                                    RT_FLOAT(0.0),
-                                    RT_FLOAT(0.0) };
-
-    rt_float_t camera_fovy      = RT_PI * RT_FLOAT(0.5);
-
-
-    rt_vec4_t camera_velocity_forward   = {};
-    rt_vec4_t camera_velocity_strafe    = {};
-    rt_vec4_t camera_velocity_up        = {};
-    rt_vec4_t camera_rotation           = {};
-
-    rt_vec4_t camera_velocity_forward_new   = {};
-    rt_vec4_t camera_velocity_strafe_new    = {};
-    rt_vec4_t camera_velocity_up_new        = {};
-    rt_vec4_t camera_rotation_new           = {};
-
-    rt_float_t camera_sensitivity       = RT_FLOAT(0.1);
-    rt_float_t camera_smoothing         = RT_FLOAT(0.01);
-    rt_float_t camera_speed             = RT_FLOAT(0.5);
-    rt_float_t camera_rotation_speed    = RT_FLOAT(0.05);
-    rt_float_t camera_pitch_delta       = RT_FLOAT(0.0);
-    rt_float_t camera_yaw_delta         = RT_FLOAT(0.0);
+    rt_fps_camera_t fps_camera = rt_fps_camera_create();
 
     rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
@@ -325,24 +298,27 @@ int main([[maybe_unused]] int argc, char** argv)
             continue;
         }
 
-        // Camera
-        rt_float_t aspect = (rt_float_t)cols / (rt_float_t)(rows * 2);
-
         rt_float_t current_time = (rt_float_t)SDL_GetTicks();
         rt_float_t delta_time = (last_time > RT_FLOAT(0.0)) ? (current_time - last_time)
                                                             : RT_FLOAT(0.0);
         last_time = current_time;
-
         total_time += delta_time * RT_FLOAT(0.001);
+
+        point_light_params.position.x = sin(total_time) * point_light_radius;
+        point_light_params.position.z = cos(total_time) * point_light_radius;
+
+        rt_world_set_point_light_params(&world,
+                                        point_light_index,
+                                        &point_light_params);
+
+        point_light_sphere_params.center = point_light_params.position;
+
+        rt_world_set_sphere_params(&world,
+                                   point_light_sphere_index,
+                                   &point_light_sphere_params);
 
         struct ncinput input = {};
         uint32_t input_id = 0;
-
-        rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
-                                        RT_FLOAT(0.0),
-                                        RT_FLOAT(1.0),
-                                        RT_FLOAT(0.0) };
-
 
         while ((input_id = notcurses_get_nblock(nc, &input))) {
 
@@ -353,11 +329,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == 'w') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_forward_new = rt_vec4_negate(rt_vec4_mul_scalar(camera_z,
-                                                                                        camera_speed));
+                        rt_fps_camera_move_forward(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        rt_vec4_zero(&camera_velocity_forward_new);
+                        rt_fps_camera_stop_moving_forward(&fps_camera);
                         break;
                     default:
                         break;
@@ -366,27 +341,23 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == 's') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_forward_new = rt_vec4_mul_scalar(camera_z,
-                                                                         camera_speed);
+                        rt_fps_camera_move_backward(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        rt_vec4_zero(&camera_velocity_forward_new);
+                        rt_fps_camera_stop_moving_backward(&fps_camera);
                         break;
                     default:
                         break;
                 }
             }
 
-            rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera_up,
-                                                                             camera_z)), camera_speed);
-
             if (input.id == 'a') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_strafe_new = rt_vec4_negate(strafe);
+                        rt_fps_camera_move_left(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        rt_vec4_zero(&camera_velocity_strafe_new);
+                        rt_fps_camera_stop_moving_left(&fps_camera);
                         break;
                     default:
                         break;
@@ -395,10 +366,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == 'd') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_strafe_new = strafe;
+                        rt_fps_camera_move_right(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        rt_vec4_zero(&camera_velocity_strafe_new);
+                        rt_fps_camera_stop_moving_right(&fps_camera);
                         break;
                     default:
                         break;
@@ -408,10 +379,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == NCKEY_LEFT) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_yaw_delta = camera_rotation_speed;
+                        rt_fps_camera_rotate_left(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_yaw_delta = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_rotating_left(&fps_camera);
                         break;
                     default:
                         break;
@@ -420,10 +391,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == NCKEY_RIGHT) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_yaw_delta = -camera_rotation_speed;
+                        rt_fps_camera_rotate_right(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_yaw_delta = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_rotating_right(&fps_camera);
                         break;
                     default:
                         break;
@@ -433,10 +404,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == NCKEY_UP) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_pitch_delta = -camera_rotation_speed;
+                        rt_fps_camera_rotate_down(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_pitch_delta = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_rotating_down(&fps_camera);
                         break;
                     default:
                         break;
@@ -445,10 +416,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == NCKEY_DOWN) {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_pitch_delta = camera_rotation_speed;
+                        rt_fps_camera_rotate_up(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_pitch_delta = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_rotating_up(&fps_camera);
                         break;
                     default:
                         break;
@@ -458,10 +429,10 @@ int main([[maybe_unused]] int argc, char** argv)
             if (input.id == 'q') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_up_new.y = camera_speed;
+                        rt_fps_camera_move_up(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_velocity_up_new.y = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_moving_up(&fps_camera);
                         break;
                     default:
                         break;
@@ -470,10 +441,10 @@ int main([[maybe_unused]] int argc, char** argv)
             else if (input.id == 'e') {
                 switch (input.evtype) {
                     case NCTYPE_PRESS:
-                        camera_velocity_up_new.y = -camera_speed;
+                        rt_fps_camera_move_down(&fps_camera);
                         break;
                     case NCTYPE_RELEASE:
-                        camera_velocity_up_new.y = RT_FLOAT(0.0);
+                        rt_fps_camera_stop_moving_down(&fps_camera);
                         break;
                     default:
                         break;
@@ -481,6 +452,7 @@ int main([[maybe_unused]] int argc, char** argv)
             }
         }
 
+        /*
         SDL_Event event                 = {};
         int32_t gamepad_deadzone        = 1000;
 
@@ -520,140 +492,12 @@ int main([[maybe_unused]] int argc, char** argv)
                     break;
             }
         }
+        */
 
-        camera_rotation_new.x       += camera_pitch_delta;
-        camera_rotation_new.x       = rt_clamp(camera_rotation_new.x,
-                                               RT_TO_RADIANS(RT_FLOAT(-89.0)),
-                                               RT_TO_RADIANS(RT_FLOAT( 89.0)));
-
-        camera_rotation_new.y       += camera_yaw_delta;
-
-        camera_rotation             = rt_vec4_lerp(camera_rotation,
-                                                   camera_rotation_new,
-                                                   camera_smoothing * delta_time);
-
-        camera_dir                  = rt_vec4_rotate_x(camera_dir, camera_rotation.x);
-        camera_dir                  = rt_vec4_rotate_y(camera_dir, camera_rotation.y);
-
-        camera_z                    = camera_dir;
-
-        camera_velocity_forward     = rt_vec4_lerp(camera_velocity_forward,
-                                                   camera_velocity_forward_new,
-                                                   camera_smoothing * delta_time);
-
-        camera_velocity_strafe      = rt_vec4_lerp(camera_velocity_strafe,
-                                                   camera_velocity_strafe_new,
-                                                   camera_smoothing * delta_time);
-
-        camera_velocity_up          = rt_vec4_lerp(camera_velocity_up,
-                                                   camera_velocity_up_new,
-                                                   camera_smoothing * delta_time);
-
-        rt_vec4_t camera_total_velocity = rt_vec4_add(camera_velocity_forward,
-                                                      camera_velocity_strafe);
-
-        camera_total_velocity       = rt_vec4_add(camera_total_velocity,
-                                                  camera_velocity_up);
-
-        camera_center               = rt_vec4_add(camera_center,
-                                                  camera_total_velocity);
-
-        rt_vec4_t camera_look_at    = rt_vec4_sub(camera_center,
-                                                  camera_dir);
-
-        rt_float_t focal_length     = rt_vec4_dist(camera_center,
-                                                   camera_look_at);
-
-        rt_float_t camera_h         = tanf(camera_fovy * RT_FLOAT(0.5));
-
-        rt_float_t viewport_height  = RT_FLOAT(2.0) * camera_h * focal_length;
-
-        rt_float_t viewport_width   = viewport_height * aspect;
-
-        rt_vec4_t camera_w          = rt_vec4_norm(rt_vec4_sub(camera_center,
-                                                               camera_look_at));
-
-        rt_vec4_t camera_u          = rt_vec4_norm(rt_vec4_cross(camera_up,
-                                                                 camera_w));
-
-        rt_vec4_t camera_v          = rt_vec4_norm(rt_vec4_cross(camera_w,
-                                                                 camera_u));
-
-        rt_vec4_t viewport_u        = rt_vec4_mul_scalar(camera_u,
-                                                         viewport_width);
-
-        rt_vec4_t viewport_v        = rt_vec4_mul_scalar(rt_vec4_negate(camera_v),
-                                                         viewport_height);
-
-        rt_vec4_t pixel_delta_u     = rt_vec4_div_scalar(viewport_u, (rt_float_t)cols);
-
-        rt_vec4_t pixel_delta_v     = rt_vec4_div_scalar(viewport_v, (rt_float_t)rows);
-
-        rt_vec4_t pixel_delta_diag  = rt_vec4_mul_scalar(rt_vec4_add(pixel_delta_u,
-                                                                     pixel_delta_v),
-                                                         RT_FLOAT(0.5));
-
-        rt_vec4_t viewport_u_half   = rt_vec4_mul_scalar(viewport_u,
-                                                         RT_FLOAT(0.5));
-
-        rt_vec4_t viewport_v_half   = rt_vec4_mul_scalar(viewport_v,
-                                                         RT_FLOAT(0.5));
-
-        rt_vec4_t viewport_upper_left = rt_vec4_sub(camera_center,
-                                                    rt_vec4_mul_scalar(camera_w,
-                                                                       focal_length));
-
-        viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
-                                                  viewport_u_half);
-
-        viewport_upper_left         = rt_vec4_sub(viewport_upper_left,
-                                                  viewport_v_half);
-
-        rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left,
-                                                  pixel_delta_diag);
-
-        rt_point_light_t* point_light = &world.point_light_buffer[point_light_index];
-
-        point_light->position.x             = point_light_radius * cosf(total_time);
-        point_light->position.z             = point_light_radius * sinf(total_time);
-        point_light_sphere_params.center    = point_light->position;
-
-        rt_world_set_sphere_params(&world,
-                                   point_light_sphere_index,
-                                   &point_light_sphere_params);
-
-        for (uint32_t row = 0; row < rows; ++row) {
-
-            rt_vec4_t ver = rt_vec4_mul_scalar(pixel_delta_v, (rt_float_t)row);
-
-            for (uint32_t col = 0; col < cols; ++col) {
-
-                rt_vec4_t hor           = rt_vec4_mul_scalar(pixel_delta_u,
-                                                             (rt_float_t)col);
-
-                rt_vec4_t pixel_center  = rt_vec4_add(pixel00_loc,
-                                                      rt_vec4_add(hor, ver));
-
-                rt_vec4_t ray_dir       = rt_vec4_sub(pixel_center,
-                                                      camera_center);
-
-                rt_ray_t r = {
-                    .dir = ray_dir,
-                    .org = camera_center,
-                };
-
-                rt_vec4_t pixel_color = rt_world_compute_color(&world,
-                                                               r,
-                                                               RT_FLOAT(0.1),
-                                                               RT_FLOAT(1000.0),
-                                                               3);
-                pixel_color = rt_vec4_apply_2(pixel_color,
-                                              rt_apply_gamma_custom,
-                                              RT_GAMMA_INVERSE);
-
-                rt_framebuffer_write(row, col, pixel_color, &framebuffer);
-            }
-        }
+        rt_fps_camera_render(&fps_camera,
+                              &world,
+                              &framebuffer,
+                              delta_time);
 
         if (-1 == ncblit_rgba(framebuffer.rgb_buffer,
                               (int32_t)(cols * sizeof(uint32_t)),
@@ -673,9 +517,11 @@ int main([[maybe_unused]] int argc, char** argv)
         SDL_Delay(16);
     }
 
+    /*
     if (gamepad) {
         SDL_CloseGamepad(gamepad);
     }
+    */
 
     rt_framebuffer_free(&framebuffer);
     rt_world_free(&world);
