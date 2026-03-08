@@ -1764,6 +1764,45 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
+                                   const rt_hit_ext_info_t*  hit_info)
+{
+        enum rt_material_type material_type = RT_MATERIAL_TYPE_null_material;
+        rt_idx_t material_index             = -1;
+
+        switch (hit_info->geometry_type) {
+            case RT_HIT_sphere: {
+
+                rt_sphere_t* sphere = &world->sphere_buffer[hit_info->geometry_index];
+                RT_ASSERT(sphere != NULL);
+
+                material_type   = sphere->material_type;
+                material_index  = sphere->material_index;
+
+                break;
+            }
+            case RT_HIT_plane: {
+
+                rt_plane_t* plane = &world->plane_buffer[hit_info->geometry_index];
+                RT_ASSERT(plane != NULL);
+
+                material_type   = plane->material_type;
+                material_index  = plane->material_index;
+
+                break;
+            }
+            default: {
+                RT_ASSERT(0);
+                break;
+            }
+        }
+
+        return !(material_index == -1                                 ||
+                 RT_MATERIAL_TYPE_null_material == material_type      ||
+                 RT_MATERIAL_TYPE_emissive_material == material_type);
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_is_in_shadow(const rt_world_t*           world,
                             rt_hit_ext_info_t*          hit_info,
                             rt_float_t                  nearestZ,
@@ -1793,7 +1832,7 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
                                      farthestZ,
                                      hit_info)) {
 
-            return true;
+            return rt_should_be_in_shadow(world, hit_info);
         }
     }
     
@@ -1822,7 +1861,7 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
                                      newFarthestZ,
                                      hit_info)) {
 
-            return true;
+            return rt_should_be_in_shadow(world, hit_info);
         }
     }
 
@@ -1888,6 +1927,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
     }
 
     rt_hit_ext_info_t hit_info_copy = hit_info;;
+
     bool is_in_shadow = rt_is_in_shadow(world,
                                         &hit_info_copy,
                                         nearestZ,

@@ -214,10 +214,41 @@ int main([[maybe_unused]] int argc, char** argv)
         .intensity = RT_FLOAT(3.0),
     };
 
-
     rt_world_set_point_light_params(&world,
                                     point_light_index,
                                     &point_light_params);
+
+    rt_idx_t point_light_sphere_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world,
+                                                        &point_light_sphere_index));
+
+    rt_sphere_params_t point_light_sphere_params = {
+        .center = point_light_params.position,
+        .radius = RT_FLOAT(0.5),
+    };
+
+    rt_world_set_sphere_params(&world,
+                               point_light_sphere_index,
+                               &point_light_sphere_params);
+
+    rt_emissive_material_t emissive_params = {
+        .color = { RT_FLOAT(1.0),
+                   RT_FLOAT(1.0),
+                   RT_FLOAT(1.0),
+                   RT_FLOAT(1.0), },
+    };
+
+    rt_idx_t point_light_emissive_material_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_emissive_material(&world,
+                                                                   &point_light_emissive_material_index));
+
+    rt_world_set_emissive_material_params(&world,
+                                          point_light_emissive_material_index,
+                                          &emissive_params);
+
+    rt_sphere_link_emissive_material(&world,
+                                     point_light_sphere_index,
+                                     point_light_emissive_material_index);
 
     struct ncvisual_options vopts = {};
     vopts.n         = nstd;
@@ -264,7 +295,7 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_float_t camera_pitch_delta       = RT_FLOAT(0.0);
     rt_float_t camera_yaw_delta         = RT_FLOAT(0.0);
 
-    rt_float_t point_light_radius       = RT_FLOAT(1.0);
+    rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
     rt_float_t last_time     = RT_FLOAT(0.0);
     rt_float_t total_time    = RT_FLOAT(0.0);
@@ -583,8 +614,13 @@ int main([[maybe_unused]] int argc, char** argv)
 
         rt_point_light_t* point_light = &world.point_light_buffer[point_light_index];
 
-        point_light->position.x     = point_light_radius * cosf(total_time);
-        point_light->position.z     = point_light_radius * sinf(total_time);
+        point_light->position.x             = point_light_radius * cosf(total_time);
+        point_light->position.z             = point_light_radius * sinf(total_time);
+        point_light_sphere_params.center    = point_light->position;
+
+        rt_world_set_sphere_params(&world,
+                                   point_light_sphere_index,
+                                   &point_light_sphere_params);
 
         for (uint32_t row = 0; row < rows; ++row) {
 
