@@ -103,6 +103,12 @@ int main(void)
 
     app.world.face_cull_mode = RT_FACE_cull_back;
 
+    app.world.atmosphere = rt_atmosphere_create_default();
+
+    rt_idx_t yellow_sun_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_directional_light(&app.world,
+                                                                   &yellow_sun_index));
+
     rt_idx_t plane_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&app.world,
                                                        &plane_index));
@@ -178,12 +184,12 @@ int main(void)
 
     rt_metallic_material_t sphere_mat_params = {
         
-        .ambient = { RT_FLOAT(0.02),
+        .ambient = { RT_FLOAT(0.04),
                      RT_FLOAT(0.04),
                      RT_FLOAT(0.08),
                      RT_FLOAT(1.0), },
 
-        .specular = { RT_FLOAT(0.2),   
+        .specular = { RT_FLOAT(0.4),   
                       RT_FLOAT(0.4),
                       RT_FLOAT(0.8),
                       RT_FLOAT(1.0), },
@@ -207,7 +213,7 @@ int main(void)
     rt_point_light_t point_light_params = {
 
         .color = { RT_FLOAT(0.25),
-                   RT_FLOAT(0.5),
+                   RT_FLOAT(1.0),
                    RT_FLOAT(1.0),
                    RT_FLOAT(1.0), },
 
@@ -216,8 +222,8 @@ int main(void)
                       RT_FLOAT(-5.0),
                       RT_FLOAT(1.0), },
 
-        .casts_shadows = true,
-        .intensity = RT_FLOAT(100.0),
+        .casts_shadows  = true,
+        .intensity      = RT_FLOAT(1.0),
     };
 
     rt_world_set_point_light_params(&app.world,
@@ -239,10 +245,8 @@ int main(void)
 
     rt_emissive_material_t emissive_params = {
 
-        .color = { RT_FLOAT(1.0),
-                   RT_FLOAT(1.0),
-                   RT_FLOAT(1.0),
-                   RT_FLOAT(1.0), },
+        .color = rt_vec4_mul_scalar(point_light_params.color,
+                                    point_light_params.intensity),
 
     };
 
@@ -261,6 +265,7 @@ int main(void)
     bool is_running = true;
 
     rt_fps_camera_t fps_camera = rt_fps_camera_create();
+    fps_camera.auto_exposure = false;
 
     rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
@@ -291,6 +296,27 @@ int main(void)
         rt_world_set_sphere_params(&app.world,
                                    point_light_sphere_index,
                                    &point_light_sphere_params);
+
+        rt_directional_light_t sun_light_params = {
+
+            .color          = { RT_FLOAT(0.99),
+                                RT_FLOAT(0.95),
+                                RT_FLOAT(0.85),
+                                RT_FLOAT(1.0), },
+
+            .direction      = {  -cos(total_time * RT_FLOAT(0.1)),
+                                 -sin(total_time * RT_FLOAT(0.1)),
+                                 RT_FLOAT(0.0),
+                                 RT_FLOAT(0.0), },
+
+            .intensity      = RT_FLOAT(10.0),
+            .casts_shadows  = true,
+
+        };
+
+        rt_world_set_directional_light_params(&app.world,
+                                              yellow_sun_index,
+                                              &sun_light_params);
 
         rt_fps_camera_update_with_sdl3_joystick(&fps_camera,
                                                 &joystick_bindings,

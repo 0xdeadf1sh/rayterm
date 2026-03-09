@@ -1014,6 +1014,171 @@ typedef struct
 rt_point_light_t;
 
 ///////////////////////////////////////////////////////////////////////////
+/////////////////////// ATMOSPHERIC SCATTERING ////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_float_t  planetary_radius;
+    rt_float_t  atmospheric_height;
+    rt_vec4_t   rayleigh_scattering;
+    rt_float_t  mie_scattering;
+    rt_float_t  phase_eccentricity;
+    uint32_t    steps;
+}
+rt_atmosphere_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_atmosphere_t rt_atmosphere_create_default()
+{
+    rt_atmosphere_t default_atmosphere = {
+
+        .planetary_radius       = RT_FLOAT(6371.0e3),
+
+        .atmospheric_height     = RT_FLOAT(10.0e3),
+
+        .rayleigh_scattering    = { RT_FLOAT(5.8e-6),
+                                    RT_FLOAT(13.5e-6),
+                                    RT_FLOAT(33.1e-6),
+                                    RT_FLOAT(0.0), },
+
+        .mie_scattering         = RT_FLOAT(21e-6),
+
+        .phase_eccentricity     = RT_FLOAT(0.8),
+
+        .steps                  = 4,
+
+    };
+
+    return default_atmosphere;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_atmosphere_occludes(const rt_atmosphere_t*    atmosphere,
+                                   rt_ray_t                  ray)
+{
+    RT_ASSERT(atmosphere   != NULL);
+
+    rt_float_t radius       = atmosphere->planetary_radius;
+
+    rt_vec4_t center        = { RT_FLOAT(0.0),
+                               -radius,
+                                RT_FLOAT(0.0),
+                                RT_FLOAT(1.0) };
+
+    rt_vec4_t offset        = rt_vec4_sub(center, ray.org);
+
+    rt_float_t t            = rt_vec4_dot(ray.dir, offset);
+
+    rt_vec4_t dir_scaled    = rt_vec4_mul_scalar(ray.dir, t);
+
+    return t >= RT_FLOAT(0.0) &&
+           rt_vec4_sqrlen(rt_vec4_sub(offset, dir_scaled)) < (radius * radius);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_atmosphere_trace(const rt_atmosphere_t* atmosphere,
+                                      rt_ray_t               ray)
+{
+    RT_ASSERT(atmosphere   != NULL);
+
+    rt_float_t radius       = atmosphere->planetary_radius;
+
+    rt_float_t r_sky        = radius + atmosphere->atmospheric_height;
+
+    rt_vec4_t center        = { RT_FLOAT(0.0),
+                                -radius,
+                                RT_FLOAT(0.0),
+                                RT_FLOAT(1.0) };
+
+    rt_vec4_t offset        = rt_vec4_sub(center, ray.org);
+
+    rt_float_t t            = rt_vec4_dot(ray.dir, offset);
+
+    rt_float_t discriminant = t * t - rt_vec4_dot(offset, offset) + r_sky * r_sky;
+
+    if (discriminant < RT_FLOAT(0.0)) {
+
+        return RT_FLOAT(0.0);
+
+    }
+    return t + sqrt(discriminant);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
+                                       rt_ray_t                ray,
+                                       rt_vec4_t               irradiance,
+                                       rt_vec4_t               direction)
+{
+    RT_ASSERT(atmosphere   != NULL);
+
+    direction               = rt_vec4_norm(rt_vec4_negate(direction));
+
+    rt_float_t g            = atmosphere->phase_eccentricity;
+
+    rt_float_t dist_eye     = rt_atmosphere_trace(atmosphere, ray);
+
+    rt_float_t cos_theta    = rt_vec4_dot(ray.dir, direction);
+
+    rt_float_t rayleigh     = RT_FLOAT(3.0) / (RT_FLOAT(16.0) * RT_PI) *
+                             (RT_FLOAT(1.0) + cos_theta * cos_theta);
+
+    rt_float_t mie          = RT_FLOAT(1.0) / (RT_FLOAT(4.0) * RT_PI) *
+                              pow(RT_FLOAT(1.0) - g, RT_FLOAT(2.0)) /
+                              pow(RT_FLOAT(1.0) + g * g - RT_FLOAT(2.0) * g * cos_theta,
+                              RT_FLOAT(1.5));
+
+    uint32_t steps          = atmosphere->steps;
+
+    rt_float_t dt           = dist_eye / (rt_float_t)steps;
+
+    rt_vec4_t f             = rt_vec4_apply_1(
+                                rt_vec4_mul_scalar(
+                                    rt_vec4_negate(
+                                        rt_vec4_add_scalar(atmosphere->rayleigh_scattering,
+                                                           atmosphere->mie_scattering)), dt), exp);
+
+    rt_vec4_t color         = { RT_FLOAT(0.0),
+                                RT_FLOAT(0.0),
+                                RT_FLOAT(0.0),
+                                RT_FLOAT(1.0), };
+
+    for (uint32_t i = 0; i < steps; ++i) {
+
+        rt_float_t t            = dist_eye * (RT_FLOAT(1.0) - (((rt_float_t)i + RT_FLOAT(0.5)) / (rt_float_t)steps));
+
+        rt_vec4_t orig          = rt_vec4_add(ray.org, rt_vec4_mul_scalar(ray.dir, t));
+
+        rt_float_t sun_dist     = rt_atmosphere_trace(atmosphere, (rt_ray_t){.org = orig, .dir = direction} );
+
+        rt_vec4_t l_in_right    = rt_vec4_apply_1(rt_vec4_mul_scalar(
+                                                    rt_vec4_negate(
+                                                        rt_vec4_add_scalar(atmosphere->rayleigh_scattering,
+                                                                           atmosphere->mie_scattering)),
+                                                    sun_dist),
+                                                  exp);
+
+        rt_vec4_t l_in_left     = rt_vec4_add_scalar(rt_vec4_mul_scalar(atmosphere->rayleigh_scattering,
+                                                                        rayleigh),
+                                                 atmosphere->mie_scattering * mie);
+
+        rt_vec4_t l_in          = rt_vec4_mul(irradiance, l_in_left);
+
+        l_in                    = rt_vec4_mul(l_in, l_in_right);
+
+        l_in                    = rt_vec4_mul_scalar(l_in, dt);
+
+        color                   = rt_vec4_mul(color, f);
+
+        color                   = rt_vec4_add(color, l_in);
+    }
+
+    return color;
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// WORLD ///////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1041,6 +1206,7 @@ typedef struct
     /////////////////////////////////// SKY ///////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
     rt_vec4_t clear_color;
+    rt_atmosphere_t atmosphere;
 
     ///////////////////////////////////////////////////////////////////////////
     ///////////////////////////////// LIGHTS //////////////////////////////////
@@ -1974,6 +2140,49 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
+                                            rt_ray_t            ray)
+{
+    RT_ASSERT(world != NULL);
+
+    rt_idx_t dir_light_count = world->directional_light_count;
+
+    if (!dir_light_count) {
+
+        return world->clear_color;
+
+    }
+
+    rt_vec4_t total_scattered_light = {};
+
+    for (rt_idx_t i = 0; i < dir_light_count; ++i) {
+
+        rt_directional_light_t* light = &world->directional_light_buffer[i];
+        RT_ASSERT(light != NULL);
+
+        rt_vec4_t direction = rt_vec4_norm(rt_vec4_negate(light->direction));
+
+        if (fmax(rt_vec4_dot(ray.dir, direction), 0.0f) > RT_FLOAT(0.999)) {
+            total_scattered_light = rt_vec4_add(total_scattered_light,
+                                                rt_vec4_mul_scalar(light->color,
+                                                                   light->intensity));
+            continue;
+        }
+        
+        rt_vec4_t scattered_light = rt_atmosphere_scatter(&world->atmosphere,
+                                                          ray,
+                                                          rt_vec4_mul_scalar(light->color,
+                                                                             light->intensity),
+                                                          light->direction);
+
+        total_scattered_light = rt_vec4_add(total_scattered_light,
+                                            scattered_light);
+    }
+
+    return total_scattered_light;
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                         rt_ray_t                ray,
                                         rt_float_t              nearestZ,
@@ -1992,7 +2201,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                   farthestZ,
                                   &hit_info)) {
 
-        return world->clear_color;;
+        return rt_world_compute_sky_color(world, ray);
     }
 
     enum rt_material_type material_type     = RT_MATERIAL_TYPE_null_material;
@@ -2028,7 +2237,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
     if (RT_MATERIAL_TYPE_null_material == material_type) {
 
-        return world->clear_color;
+        return rt_world_compute_sky_color(world, ray);
     }
 
     rt_hit_ext_info_t hit_info_copy = hit_info;;
@@ -2073,7 +2282,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                                                          RT_SHADOW_BIAS));
 
             rt_ray_t reflected_ray = { .org = reflected_ray_pos,
-                                       .dir = reflected_ray_dir };
+                                       .dir = rt_vec4_norm(reflected_ray_dir) };
 
             rt_vec4_t reflected_color = rt_world_compute_color(world,
                                                                reflected_ray,
@@ -2098,7 +2307,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
         */
         default:
             RT_ASSERT(false && "Unhandled material type!");
-            return world->clear_color;
+            return rt_world_compute_sky_color(world, ray);
     }
 }
 
@@ -2550,8 +2759,8 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
             rt_vec4_t pixel_center  = rt_vec4_add(pixel00_loc,
                                                   rt_vec4_add(hor, ver));
 
-            rt_vec4_t ray_dir       = rt_vec4_sub(pixel_center,
-                                                  camera->position);
+            rt_vec4_t ray_dir       = rt_vec4_norm(rt_vec4_sub(pixel_center,
+                                                               camera->position));
 
             rt_ray_t r = {
                 .dir = ray_dir,
