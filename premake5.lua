@@ -161,4 +161,4 @@ function build_project(source_file)
 	})
 end
 
-build_project("spheres")
+build_project("shapes_notcurses")
