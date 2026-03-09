@@ -262,8 +262,8 @@ int main(void)
 
     rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
-    // rt_fps_camera_notcurses_keybindings_t keybindings = rt_fps_camera_notcurses_default_keybindings();
-    rt_fps_camera_sdl3_joystick_keybindings_t keybindings = rt_fps_camera_sdl3_default_joystick_keybindings();
+    rt_fps_camera_notcurses_keybindings_t keyboard_bindings = rt_fps_camera_notcurses_default_keybindings();
+    rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
 
     rt_timer_t timer = {};
     rt_float_t total_time = RT_FLOAT(0.0);
@@ -290,17 +290,21 @@ int main(void)
                                    point_light_sphere_index,
                                    &point_light_sphere_params);
 
-        // rt_fps_camera_update_with_notcurses(&fps_camera,
-        //                                     delta_time,
-        //                                     &keybindings,
-        //                                     app.nc,
-        //                                     &is_running);
-
         rt_fps_camera_update_with_sdl3_joystick(&fps_camera,
-                                                 &keybindings,
-                                                 &app.gamepad_info,
-                                                 delta_time,
-                                                 &is_running);
+                                                &joystick_bindings,
+                                                &app.gamepad_info,
+                                                delta_time,
+                                                &is_running);
+
+        if (!app.gamepad_info.gamepad) {
+
+            rt_fps_camera_update_with_notcurses(&fps_camera,
+                                                delta_time,
+                                                &keyboard_bindings,
+                                                app.nc,
+                                                &is_running);
+
+        }
 
         rt_fps_camera_render(&fps_camera,
                              &app.world,
