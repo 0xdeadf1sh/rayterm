@@ -235,6 +235,99 @@ RT_API rt_float_t rt_clamp(rt_float_t x,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_float_t last_time;
+    rt_float_t total_time;
+    rt_float_t delay_time;
+}
+rt_timer_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef void (*rt_timer_callback_t)(rt_timer_t*     timer,
+                                    void*           user_param);
+
+// #undef RT_USE_SDL3
+
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_SDL3
+#include <SDL3/SDL.h>
+#else
+#include <time.h>
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_timer_update(rt_timer_t*              timer,
+                                  rt_timer_callback_t      callback,
+                                  void*                    user_param)
+{
+#ifdef RT_USE_SDL3
+
+    rt_float_t current_time     = (rt_float_t)SDL_GetTicks() * RT_FLOAT(0.001);
+
+#else
+
+    rt_float_t current_time     = (rt_float_t)clock() / (rt_float_t)CLOCKS_PER_SEC;
+
+#endif
+
+    rt_float_t delta_time       = (timer->last_time > RT_FLOAT(0.0)) ? (current_time - timer->last_time)
+                                                                     : RT_FLOAT(0.0);
+    timer->last_time            = current_time;
+    timer->total_time           += delta_time;
+
+    if (timer->total_time       >= timer->delay_time) {
+
+        if (callback) {
+
+            callback(timer, user_param);
+
+        }
+
+        timer->total_time       = RT_FLOAT(0.0);
+
+    }
+
+    return delta_time;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_timer_wait(rt_timer_t*   timer,
+                          rt_float_t    target_fps)
+{
+#ifdef RT_USE_SDL3
+
+    rt_float_t elapsed_time     = (rt_float_t)SDL_GetTicks() * RT_FLOAT(0.001) - timer->last_time;
+
+#else
+
+    rt_float_t elapsed_time     = ((rt_float_t)clock() / (rt_float_t)CLOCKS_PER_SEC) - timer->last_time;
+
+#endif
+
+    rt_float_t ms               = RT_FLOAT(1000.0) / target_fps;
+    rt_float_t remaining_time   = ms - elapsed_time;
+
+    if (remaining_time > RT_FLOAT(0.0)) {
+
+#ifdef RT_USE_SDL3
+
+        SDL_Delay((uint32_t)remaining_time);
+
+#else
+
+        struct timespec ts = {};
+
+        ts.tv_sec   = (time_t)(remaining_time / RT_FLOAT(1000.0));
+        ts.tv_nsec  = (long)((remaining_time - (rt_float_t)ts.tv_sec) * RT_FLOAT(1000.0));
+
+        nanosleep(&ts, NULL);
+
+#endif
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MATH ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2157,9 +2250,9 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
         .fovy           = RT_PI * RT_FLOAT(0.5),
 
         .sensitivity    = RT_FLOAT(0.1),
-        .smoothing      = RT_FLOAT(0.01),
-        .movement_speed = RT_FLOAT(0.02),
-        .rotation_speed = RT_FLOAT(0.002),
+        .smoothing      = RT_FLOAT(10.0),
+        .movement_speed = RT_FLOAT(20.0),
+        .rotation_speed = RT_FLOAT(2.0),
 
         .pitch_delta    = RT_FLOAT(0.0),
         .yaw_delta      = RT_FLOAT(0.0),
@@ -2666,7 +2759,6 @@ RT_API void rt_fps_camera_update_with_notcurses(rt_fps_camera_t*                
 /////////////////////////// NOTCURSES SURFACE /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
-#define RT_USE_NOTCURSES
 #ifdef RT_USE_NOTCURSES
 
 #include <notcurses/notcurses.h>

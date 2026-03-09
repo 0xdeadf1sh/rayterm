@@ -14,10 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#ifndef RT_USE_NOTCURSES
 #define RT_USE_NOTCURSES
-#endif
-
+#define RT_USE_SDL3
 #include "rayterm.h"
 
 #include <SDL3/SDL.h>
@@ -76,6 +74,8 @@ static void app_destroy(app_state_t* state)
         rt_world_free(&state->world);
         notcurses_stop(state->nc);
     }
+
+    SDL_Quit();
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -306,10 +306,10 @@ int main([[maybe_unused]] int argc, char** argv)
 
     rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
-    rt_float_t last_time     = RT_FLOAT(0.0);
-    rt_float_t total_time    = RT_FLOAT(0.0);
-
     rt_fps_camera_notcurses_keybindings_t keybindings = rt_fps_camera_notcurses_default_keybindings();
+
+    rt_timer_t timer = {};
+    rt_float_t total_time = RT_FLOAT(0.0);
 
     while (is_running) {
 
@@ -318,20 +318,16 @@ int main([[maybe_unused]] int argc, char** argv)
             continue;
         }
 
-        rt_float_t current_time = (rt_float_t)SDL_GetTicks();
-        rt_float_t delta_time = (last_time > RT_FLOAT(0.0)) ? (current_time - last_time)
-                                                            : RT_FLOAT(0.0);
-        last_time = current_time;
-        total_time += delta_time * RT_FLOAT(0.001);
+        rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
+        total_time += delta_time;
 
-        point_light_params.position.x = sin(total_time) * point_light_radius;
-        point_light_params.position.z = cos(total_time) * point_light_radius;
+        point_light_params.position.x       = sin(total_time) * point_light_radius;
+        point_light_params.position.z       = cos(total_time) * point_light_radius;
+        point_light_sphere_params.center    = point_light_params.position;
 
         rt_world_set_point_light_params(&app.world,
                                         point_light_index,
                                         &point_light_params);
-
-        point_light_sphere_params.center = point_light_params.position;
 
         rt_world_set_sphere_params(&app.world,
                                    point_light_sphere_index,
@@ -390,15 +386,12 @@ int main([[maybe_unused]] int argc, char** argv)
                              &app.framebuffer,
                              delta_time);
 
-        rt_notcurses_surface_blit(&notcurses_surface, &app.framebuffer);
+        rt_notcurses_surface_blit(&notcurses_surface,
+                                  &app.framebuffer);
 
-        if (-1 == notcurses_render(app.nc)) {
-            fprintf(stderr, "%s: notcurses_render() failed\n", argv[0]);
-            SDL_Quit();
-            return EXIT_FAILURE;
-        }
+        RT_ASSERT(-1 != notcurses_render(app.nc));
 
-        SDL_Delay(16);
+        rt_timer_wait(&timer, RT_FLOAT(60.0));
     }
 
     /*
@@ -408,7 +401,6 @@ int main([[maybe_unused]] int argc, char** argv)
     */
 
     app_destroy(&app);
-    SDL_Quit();
 
     return EXIT_SUCCESS;
 }
