@@ -14,11 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#ifndef RT_USE_NOTCURSES
+#define RT_USE_NOTCURSES
+#endif
+
 #include "rayterm.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_keyboard.h>
-#include <notcurses/notcurses.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +60,45 @@ static SDL_Gamepad* retrieveGamepad()
 */
 
 ///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    struct notcurses*   nc;
+    rt_framebuffer_t    framebuffer;
+    rt_world_t          world;
+}
+app_state_t;
+
+///////////////////////////////////////////////////////////////////////////
+static void app_destroy(app_state_t* state)
+{
+    if (state) {
+        rt_framebuffer_free(&state->framebuffer);
+        rt_world_free(&state->world);
+        notcurses_stop(state->nc);
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+static void error_callback(const char*      filename,
+                           uint32_t         line,
+                           const char*      function_name,
+                           const char*      message,
+                           void*            userParam)
+{
+    app_state_t* state = (app_state_t*)userParam;
+
+    rt_framebuffer_free(&state->framebuffer);
+    rt_world_free(&state->world);
+    notcurses_stop(state->nc);
+
+    fprintf(stderr, "ERROR: %s:%" PRIu32 " in %s: %s\n", filename,
+                                                         line,
+                                                         function_name,
+                                                         message);
+    exit(EXIT_FAILURE);
+}
+
+///////////////////////////////////////////////////////////////////////////
 int main([[maybe_unused]] int argc, char** argv)
 {
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
@@ -74,41 +116,39 @@ int main([[maybe_unused]] int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+    app_state_t app = {};
+    rt_set_error_callback(error_callback, &app);
+
     struct notcurses_options opts = {};
-    struct notcurses* nc = notcurses_core_init(&opts, stdout);
-    if (!nc) {
+    app.nc = notcurses_core_init(&opts, stdout);
+    if (!app.nc) {
         fprintf(stderr, "%s: notcurses_init() failed\n", argv[0]);
         SDL_Quit();
         return EXIT_FAILURE;
     }
 
-    uint32_t rows = 0;
-    uint32_t cols = 0;
-    struct ncplane* nstd = notcurses_stddim_yx(nc, &rows, &cols);
-    if (!nstd) {
+    struct ncplane* std = notcurses_stdplane(app.nc);
+    if (!std) {
         fprintf(stderr, "%s: notcurses_stdplane() failed\n", argv[0]);
         SDL_Quit();
         return EXIT_FAILURE;
     }
 
-    rows *= 2;
-    cols *= 2;
+    rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std);
 
-    rt_framebuffer_t framebuffer = {};
-    RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(cols, rows, &framebuffer));
+    RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(notcurses_surface.cols,
+                                                         notcurses_surface.rows,
+                                                         &app.framebuffer));
 
-    rt_world_t world            = {};
+    app.world.clear_color = (rt_vec4_t){ RT_FLOAT(0.02),
+                                         RT_FLOAT(0.03),
+                                         RT_FLOAT(0.03),
+                                         RT_FLOAT(1.00), };
 
-    rt_vec4_set(&world.clear_color,
-                RT_FLOAT(0.02),
-                RT_FLOAT(0.02),
-                RT_FLOAT(0.03),
-                RT_FLOAT(1.00));
-
-    world.face_cull_mode = RT_FACE_cull_back;
+    app.world.face_cull_mode = RT_FACE_cull_back;
 
     rt_idx_t plane_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&world,
+    RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&app.world,
                                                        &plane_index));
 
     rt_plane_params_t plane_params = {
@@ -126,10 +166,10 @@ int main([[maybe_unused]] int argc, char** argv)
         .side_length = RT_FLOAT(50.0),
     };
 
-    rt_world_set_plane_params(&world, plane_index, &plane_params);
+    rt_world_set_plane_params(&app.world, plane_index, &plane_params);
 
     rt_idx_t plane_material_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&world,
+    RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&app.world,
                                                                        &plane_material_index));
 
     rt_checkerboard_material_t mat_params = {
@@ -149,32 +189,36 @@ int main([[maybe_unused]] int argc, char** argv)
         .receives_shadows   = true,
     };
 
-    rt_world_set_checkerboard_material_params(&world,
+    rt_world_set_checkerboard_material_params(&app.world,
                                               plane_material_index,
                                               &mat_params);
 
-    rt_plane_link_checkerboard_material(&world,
+    rt_plane_link_checkerboard_material(&app.world,
                                         plane_index,
                                         plane_material_index);
 
     rt_idx_t sphere_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world, &sphere_index));
+    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
+                                                        &sphere_index));
 
     rt_sphere_params_t sphere_params = {
+
         .center = { RT_FLOAT( 0.0),
                     RT_FLOAT( 3.0),
                     RT_FLOAT(-10.0),
                     RT_FLOAT( 1.0), },
 
         .radius = RT_FLOAT(3.0),
+
     };
 
-    rt_world_set_sphere_params(&world,
+    rt_world_set_sphere_params(&app.world,
                                sphere_index,
                                &sphere_params);
 
     rt_idx_t sphere_material_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_metallic_material(&world, &sphere_material_index));
+    RT_ASSERT(RT_STATUS_success == rt_world_push_metallic_material(&app.world,
+                                                                   &sphere_material_index));
 
     rt_metallic_material_t sphere_mat_params = {
         
@@ -192,16 +236,16 @@ int main([[maybe_unused]] int argc, char** argv)
     };
 
 
-    rt_world_set_metallic_material_params(&world,
+    rt_world_set_metallic_material_params(&app.world,
                                           sphere_material_index,
                                           &sphere_mat_params);
 
-    rt_sphere_link_metallic_material(&world,
+    rt_sphere_link_metallic_material(&app.world,
                                      sphere_index,
                                      sphere_material_index);
 
     rt_idx_t point_light_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&world,
+    RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&app.world,
                                                              &point_light_index));
 
     rt_point_light_t point_light_params = {
@@ -220,12 +264,12 @@ int main([[maybe_unused]] int argc, char** argv)
         .intensity = RT_FLOAT(3.0),
     };
 
-    rt_world_set_point_light_params(&world,
+    rt_world_set_point_light_params(&app.world,
                                     point_light_index,
                                     &point_light_params);
 
     rt_idx_t point_light_sphere_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&world,
+    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
                                                         &point_light_sphere_index));
 
     rt_sphere_params_t point_light_sphere_params = {
@@ -233,7 +277,7 @@ int main([[maybe_unused]] int argc, char** argv)
         .radius = RT_FLOAT(0.5),
     };
 
-    rt_world_set_sphere_params(&world,
+    rt_world_set_sphere_params(&app.world,
                                point_light_sphere_index,
                                &point_light_sphere_params);
 
@@ -245,24 +289,16 @@ int main([[maybe_unused]] int argc, char** argv)
     };
 
     rt_idx_t point_light_emissive_material_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_emissive_material(&world,
+    RT_ASSERT(RT_STATUS_success == rt_world_push_emissive_material(&app.world,
                                                                    &point_light_emissive_material_index));
 
-    rt_world_set_emissive_material_params(&world,
+    rt_world_set_emissive_material_params(&app.world,
                                           point_light_emissive_material_index,
                                           &emissive_params);
 
-    rt_sphere_link_emissive_material(&world,
+    rt_sphere_link_emissive_material(&app.world,
                                      point_light_sphere_index,
                                      point_light_emissive_material_index);
-
-    struct ncvisual_options vopts = {};
-    vopts.n         = nstd;
-    vopts.leny      = rows;
-    vopts.lenx      = cols;
-    vopts.blitter   = NCBLIT_2x2;
-    vopts.scaling   = NCSCALE_NONE;
-    vopts.flags     = NCVISUAL_OPTION_NODEGRADE;
 
     bool is_running = true;
 
@@ -273,28 +309,12 @@ int main([[maybe_unused]] int argc, char** argv)
     rt_float_t last_time     = RT_FLOAT(0.0);
     rt_float_t total_time    = RT_FLOAT(0.0);
 
+    rt_fps_camera_notcurses_keybindings_t keybindings = rt_fps_camera_notcurses_default_keybindings();
+
     while (is_running) {
 
-        uint32_t new_rows = 0;
-        uint32_t new_cols = 0;
-
-        ncplane_dim_yx(nstd, &new_rows, &new_cols);
-
-        new_rows *= 2;
-        new_cols *= 2;
-
-        if (new_rows != vopts.leny || new_cols != vopts.lenx) {
-
-            RT_ASSERT(RT_STATUS_success == rt_framebuffer_resize(new_cols,
-                                                                 new_rows,
-                                                                 &framebuffer));
-
-            vopts.leny = new_rows;
-            vopts.lenx = new_cols;
-
-            rows = new_rows;
-            cols = new_cols;
-
+        if (rt_notcurses_surface_resize(&notcurses_surface,
+                                        &app.framebuffer)) {
             continue;
         }
 
@@ -307,150 +327,21 @@ int main([[maybe_unused]] int argc, char** argv)
         point_light_params.position.x = sin(total_time) * point_light_radius;
         point_light_params.position.z = cos(total_time) * point_light_radius;
 
-        rt_world_set_point_light_params(&world,
+        rt_world_set_point_light_params(&app.world,
                                         point_light_index,
                                         &point_light_params);
 
         point_light_sphere_params.center = point_light_params.position;
 
-        rt_world_set_sphere_params(&world,
+        rt_world_set_sphere_params(&app.world,
                                    point_light_sphere_index,
                                    &point_light_sphere_params);
 
-        struct ncinput input = {};
-        uint32_t input_id = 0;
-
-        while ((input_id = notcurses_get_nblock(nc, &input))) {
-
-            if (input.id == NCKEY_ESC && input.evtype == NCTYPE_RELEASE) {
-                is_running = false;
-            }
-
-            if (input.id == 'w') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_forward(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_forward(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            else if (input.id == 's') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_backward(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_backward(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            if (input.id == 'a') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_left(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_left(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            else if (input.id == 'd') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_right(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_right(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            if (input.id == NCKEY_LEFT) {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_rotate_left(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_rotating_left(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            else if (input.id == NCKEY_RIGHT) {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_rotate_right(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_rotating_right(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            if (input.id == NCKEY_UP) {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_rotate_down(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_rotating_down(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            else if (input.id == NCKEY_DOWN) {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_rotate_up(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_rotating_up(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-
-            if (input.id == 'q') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_up(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_up(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-            else if (input.id == 'e') {
-                switch (input.evtype) {
-                    case NCTYPE_PRESS:
-                        rt_fps_camera_move_down(&fps_camera);
-                        break;
-                    case NCTYPE_RELEASE:
-                        rt_fps_camera_stop_moving_down(&fps_camera);
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
+        rt_fps_camera_update_with_notcurses(&fps_camera,
+                                            delta_time,
+                                            &keybindings,
+                                            app.nc,
+                                            &is_running);
 
         /*
         SDL_Event event                 = {};
@@ -495,20 +386,13 @@ int main([[maybe_unused]] int argc, char** argv)
         */
 
         rt_fps_camera_render(&fps_camera,
-                              &world,
-                              &framebuffer,
-                              delta_time);
+                             &app.world,
+                             &app.framebuffer,
+                             delta_time);
 
-        if (-1 == ncblit_rgba(framebuffer.rgb_buffer,
-                              (int32_t)(cols * sizeof(uint32_t)),
-                              &vopts)) {
+        rt_notcurses_surface_blit(&notcurses_surface, &app.framebuffer);
 
-            fprintf(stderr, "%s: ncblit_rgba() failed\n", argv[0]);
-            SDL_Quit();
-            return EXIT_FAILURE;
-        }
-
-        if (-1 == notcurses_render(nc)) {
+        if (-1 == notcurses_render(app.nc)) {
             fprintf(stderr, "%s: notcurses_render() failed\n", argv[0]);
             SDL_Quit();
             return EXIT_FAILURE;
@@ -523,8 +407,8 @@ int main([[maybe_unused]] int argc, char** argv)
     }
     */
 
-    rt_framebuffer_free(&framebuffer);
-    rt_world_free(&world);
+    app_destroy(&app);
     SDL_Quit();
-    return notcurses_stop(nc);
+
+    return EXIT_SUCCESS;
 }

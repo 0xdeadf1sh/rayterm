@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,6 +79,15 @@ typedef int32_t rt_idx_t;
 #define RT_INIT_CAP                     8
 
 ///////////////////////////////////////////////////////////////////////////
+//////////////////////////// ERROR CALLBACK ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+typedef void (*rt_error_callback_t)(const char*             filename,
+                                    uint32_t                line,
+                                    const char*             function_name,
+                                    const char*             message,
+                                    void*                   userParam);
+
+///////////////////////////////////////////////////////////////////////////
 //////////////////////////////// ASSERTIONS ///////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -90,20 +100,45 @@ enum rt_status
 typedef enum rt_status rt_status_t;
 
 ///////////////////////////////////////////////////////////////////////////
+static void* rt_default_user_param = NULL;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_default_error_callback(const char*             filename,
+                                      uint32_t                line,
+                                      const char*             function_name,
+                                      const char*             message,
+                                      [[maybe_unused]] void*  userParam)
+{
+    fprintf(stderr, "ERROR: %s:%" PRIu32 " in %s: %s\n", filename,
+                                                         line,
+                                                         function_name,
+                                                         message);
+    exit(EXIT_FAILURE);
+}
+
+///////////////////////////////////////////////////////////////////////////
+rt_error_callback_t rt_error_callback = rt_default_error_callback;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_set_error_callback(rt_error_callback_t   callback,
+                                  void*                 userParam)
+{
+    rt_error_callback       = callback;
+    rt_default_user_param   = userParam;
+}
+
+///////////////////////////////////////////////////////////////////////////
 #define RT_ASSERT(EXPR)                                                     \
     do {                                                                    \
         if (!(EXPR)) {                                                      \
-            fprintf(stderr, #EXPR " failed at %s (%s) : %u\n",              \
-                            __FILE__,                                       \
-                            __PRETTY_FUNCTION__,                            \
-                            __LINE__);                                      \
-            exit(EXIT_FAILURE);                                             \
+            rt_error_callback(__FILE__,                                     \
+                              __LINE__,                                     \
+                              __PRETTY_FUNCTION__,                          \
+                              #EXPR " failed!",                             \
+                              rt_default_user_param);                       \
         }                                                                   \
     }                                                                       \
     while (0);
-
-///////////////////////////////////////////////////////////////////////////
-#define RT_ASSERT_STATUS(STATUS)        RT_ASSERT(STATUS == RT_STATUS_success)
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////// MACRO FUNCTIONS //////////////////////////////
@@ -211,32 +246,6 @@ typedef struct
 rt_vec4_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_vec4_zero(rt_vec4_t* p)
-{
-    RT_ASSERT(p != NULL);
-
-    p->x = RT_FLOAT(0.0);
-    p->y = RT_FLOAT(0.0);
-    p->z = RT_FLOAT(0.0);
-    p->w = RT_FLOAT(0.0);
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_vec4_set(rt_vec4_t* p,
-                        rt_float_t x,
-                        rt_float_t y,
-                        rt_float_t z,
-                        rt_float_t w)
-{
-    RT_ASSERT(p != NULL);
-
-    p->x = x;
-    p->y = y;
-    p->z = z;
-    p->w = w;
-}
-
-///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_vec4_add(rt_vec4_t p,
                              rt_vec4_t q)
 {
@@ -277,7 +286,7 @@ RT_API rt_vec4_t rt_vec4_sub_scalar(rt_vec4_t   p,
                                     rt_float_t  k)
 {
     p.x -= k;
-p.y -= k;
+    p.y -= k;
     p.z -= k;
     p.w -= k;
 
@@ -769,19 +778,20 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
                           rt_float_t                farthestZ,
                           rt_hit_info_t*            info)
 {
-    RT_ASSERT(info      != NULL);
-    RT_ASSERT(nearestZ  <= farthestZ);
+    RT_ASSERT(info          != NULL);
+    RT_ASSERT(nearestZ      <= farthestZ);
 
     rt_float_t sphere_radius = sphere.geometry_params.radius;
     rt_vec4_t sphere_center  = sphere.geometry_params.center;
 
-    rt_vec4_t oc    = rt_vec4_sub(sphere.geometry_params.center, ray.org);
-    rt_float_t a    = rt_vec4_sqrlen(ray.dir);
-    rt_float_t h    = rt_vec4_dot(ray.dir, oc);
-    rt_float_t c    = rt_vec4_sqrlen(oc) - sphere_radius * sphere_radius;
+    rt_vec4_t oc            = rt_vec4_sub(sphere.geometry_params.center, ray.org);
+    rt_float_t a            = rt_vec4_sqrlen(ray.dir);
+    rt_float_t h            = rt_vec4_dot(ray.dir, oc);
+    rt_float_t c            = rt_vec4_sqrlen(oc) - sphere_radius * sphere_radius;
 
-    rt_float_t disc = h * h - a * c;
-    if (disc < RT_FLOAT(0.0)) {
+    rt_float_t disc         = h * h - a * c;
+
+    if (disc                < RT_FLOAT(0.0)) {
         return false;
     }
 
@@ -794,11 +804,14 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
 
     rt_float_t root_chosen   = root_nearest;
 
-    if (root_chosen <= range_min || root_chosen >= range_max) {
+    if (root_chosen         <= range_min ||
+        root_chosen         >= range_max) {
 
         root_chosen = root_farthest;
 
-        if (root_chosen <= range_min || root_chosen >= range_max) {
+        if (root_chosen     <= range_min ||
+            root_chosen     >= range_max) {
+
             return false;
         }
     }
@@ -822,42 +835,43 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
                          rt_float_t             farthestZ,
                          rt_hit_info_t*         info)
 {
-    RT_ASSERT(info      != NULL);
-    RT_ASSERT(nearestZ  <= farthestZ);
+    RT_ASSERT(info          != NULL);
+    RT_ASSERT(nearestZ      <= farthestZ);
 
     rt_vec4_t plane_position        = plane.geometry_params.position;
     rt_vec4_t plane_normal          = plane.geometry_params.normal;
     rt_float_t plane_side_length    = plane.geometry_params.side_length;
 
-    rt_vec4_t negated_plane_normal = rt_vec4_negate(plane_normal);
+    rt_vec4_t negated_plane_normal  = rt_vec4_negate(plane_normal);
 
-    rt_float_t denom = rt_vec4_dot(negated_plane_normal,
-                                   ray.dir);
+    rt_float_t denom                = rt_vec4_dot(negated_plane_normal,
+                                                  ray.dir);
 
     if (denom < RT_EPSILON) {
         return false;
     }
 
-    rt_vec4_t dir = rt_vec4_sub(plane_position,
-                                ray.org);
+    rt_vec4_t dir           = rt_vec4_sub(plane_position,
+                                          ray.org);
 
-    rt_float_t t = rt_vec4_dot(dir,
-                               negated_plane_normal) / denom;
+    rt_float_t t            = rt_vec4_dot(dir,
+                                          negated_plane_normal) / denom;
 
-    rt_vec4_t hit_position = rt_ray_at(ray, t);
+    rt_vec4_t hit_position  = rt_ray_at(ray, t);
 
-    rt_float_t diff_x = fabs(hit_position.x - plane_position.x);
-    rt_float_t diff_y = fabs(hit_position.y - plane_position.y);
-    rt_float_t diff_z = fabs(hit_position.z - plane_position.z);
+    rt_float_t diff_x       = fabs(hit_position.x - plane_position.x);
+    rt_float_t diff_y       = fabs(hit_position.y - plane_position.y);
+    rt_float_t diff_z       = fabs(hit_position.z - plane_position.z);
 
-    if (diff_x > plane_side_length ||
-        diff_y > plane_side_length ||
-        diff_z > plane_side_length) {
+    if (diff_x              > plane_side_length ||
+        diff_y              > plane_side_length ||
+        diff_z              > plane_side_length) {
 
         return false;
     }
 
-    if (t < nearestZ || t > farthestZ) {
+    if (t                   < nearestZ ||
+        t                   > farthestZ) {
         return false;
     }
 
@@ -983,9 +997,7 @@ RT_API rt_status_t RT_CONCAT2(rt_world_push_, OBJECT)                       \
     else if (count >= capacity) {                                           \
                                                                             \
         rt_idx_t capacity_new = capacity ? 2 * capacity : RT_INIT_CAP;      \
-        if (capacity_new <= 0) {                                            \
-            return RT_STATUS_failure;                                       \
-        }                                                                   \
+        RT_ASSERT(capacity_new > capacity);                                 \
                                                                             \
         size_t bytes_required = (size_t)capacity_new * sizeof(buffer_type); \
         buffer_type* buffer_new = (buffer_type*)RT_ALLOC(bytes_required);   \
@@ -1076,9 +1088,6 @@ RT_API rt_status_t RT_CONCAT2(rt_world_reserve_, OBJECT)                    \
 RT_API void RT_CONCAT3(rt_world_free_, OBJECT, s)                           \
 (rt_world_t* world)                                                         \
 {                                                                           \
-    rt_idx_t capacity = world->RT_CONCAT2(OBJECT, _capacity);               \
-    RT_ASSERT(capacity >= 0);                                               \
-                                                                            \
     RT_FREE(world->RT_CONCAT2(OBJECT, _buffer));                            \
     world->RT_CONCAT2(OBJECT, _buffer)     = NULL;                          \
     world->RT_CONCAT2(OBJECT, _capacity)   = 0;                             \
@@ -1159,10 +1168,10 @@ RT_API void RT_CONCAT4(rt_, GEOMETRY, _link_, MATERIAL)                     \
     typedef RT_CONCAT3(rt_, GEOMETRY, _t) geometry_type;                    \
                                                                             \
     geometry_type* geometry_buffer  = world->RT_CONCAT2(GEOMETRY, _buffer); \
-    RT_ASSERT(geometry_buffer != NULL);                                     \
+    RT_ASSERT(geometry_buffer   != NULL);                                   \
                                                                             \
-    geometry_type* geometry         = &geometry_buffer[geometry_index];     \
-    RT_ASSERT(geometry != NULL);                                            \
+    geometry_type* geometry     = &geometry_buffer[geometry_index];         \
+    RT_ASSERT(geometry          != NULL);                                   \
                                                                             \
     geometry->material_type     = RT_CONCAT2(RT_MATERIAL_TYPE_, MATERIAL);  \
     geometry->material_index    = material_index;                           \
@@ -1187,18 +1196,17 @@ RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 RT_API void RT_CONCAT4(rt_, GEOMETRY, _unlink_, MATERIAL)                   \
 (rt_world_t* world, rt_idx_t geometry_index)                                \
 {                                                                           \
-    RT_ASSERT(world != NULL);                                               \
-                                                                            \
+    RT_ASSERT(world             != NULL);                                   \
     RT_ASSERT(geometry_index    >= 0);                                      \
     RT_ASSERT(geometry_index    < world->RT_CONCAT2(GEOMETRY, _count));     \
                                                                             \
     typedef RT_CONCAT3(rt_, GEOMETRY, _t) geometry_type;                    \
                                                                             \
     geometry_type* geometry_buffer  = world->RT_CONCAT2(GEOMETRY, _buffer); \
-    RT_ASSERT(geometry_buffer != NULL);                                     \
+    RT_ASSERT(geometry_buffer   != NULL);                                   \
                                                                             \
-    geometry_type* geometry         = &geometry_buffer[geometry_index];     \
-    RT_ASSERT(geometry != NULL);                                            \
+    geometry_type* geometry     = &geometry_buffer[geometry_index];         \
+    RT_ASSERT(geometry          != NULL);                                   \
                                                                             \
     geometry->material_type     = RT_MATERIAL_TYPE_null_material;           \
     geometry->material_index    = 0;                                        \
@@ -1228,10 +1236,10 @@ RT_API void rt_world_set_directional_light_params(rt_world_t*                   
     RT_ASSERT(light_params  != NULL);
 
     rt_directional_light_t* light_buffer = world->directional_light_buffer;
-    RT_ASSERT(light_buffer != NULL);
+    RT_ASSERT(light_buffer  != NULL);
 
     rt_directional_light_t* light = &light_buffer[light_index];
-    RT_ASSERT(light != NULL);
+    RT_ASSERT(light         != NULL);
 
     memcpy(light, light_params, sizeof(rt_directional_light_t));
 }
@@ -1246,10 +1254,10 @@ RT_API void rt_world_set_point_light_params(rt_world_t*              world,
     RT_ASSERT(light_params  != NULL);
 
     rt_point_light_t* light_buffer = world->point_light_buffer;
-    RT_ASSERT(light_buffer != NULL);
+    RT_ASSERT(light_buffer  != NULL);
 
     rt_point_light_t* light = &light_buffer[light_index];
-    RT_ASSERT(light != NULL);
+    RT_ASSERT(light         != NULL);
 
     memcpy(light, light_params, sizeof(rt_point_light_t));
 }
@@ -1267,11 +1275,9 @@ RT_API void rt_world_set_sphere_params(rt_world_t*                  world,
     RT_ASSERT(sphere_buffer != NULL);
 
     rt_sphere_t* sphere = &sphere_buffer[sphere_index];
-    RT_ASSERT(sphere != NULL);
+    RT_ASSERT(sphere        != NULL);
 
-    memcpy(&sphere->geometry_params,
-           sphere_params,
-           sizeof(rt_sphere_params_t));
+    memcpy(&sphere->geometry_params, sphere_params, sizeof(rt_sphere_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1284,14 +1290,12 @@ RT_API void rt_world_set_plane_params(rt_world_t*               world,
     RT_ASSERT(plane_params  != NULL);
 
     rt_plane_t* plane_buffer = world->plane_buffer;
-    RT_ASSERT(plane_buffer != NULL);
+    RT_ASSERT(plane_buffer  != NULL);
 
     rt_plane_t* plane = &plane_buffer[plane_index];
-    RT_ASSERT(plane != NULL);
+    RT_ASSERT(plane         != NULL);
 
-    memcpy(&plane->geometry_params,
-           plane_params,
-           sizeof(rt_plane_params_t));
+    memcpy(&plane->geometry_params, plane_params, sizeof(rt_plane_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1304,10 +1308,10 @@ RT_API void rt_world_set_emissive_material_params(rt_world_t*                   
     RT_ASSERT(material_params   != NULL);
 
     rt_emissive_material_t* material_buffer = world->emissive_material_buffer;
-    RT_ASSERT(material_buffer != NULL);
+    RT_ASSERT(material_buffer   != NULL);
 
     rt_emissive_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(material          != NULL);
 
     memcpy(material, material_params, sizeof(rt_emissive_material_t));
 }
@@ -1322,10 +1326,10 @@ RT_API void rt_world_set_checkerboard_material_params(rt_world_t*               
     RT_ASSERT(material_params   != NULL);
 
     rt_checkerboard_material_t* material_buffer = world->checkerboard_material_buffer;
-    RT_ASSERT(material_buffer != NULL);
+    RT_ASSERT(material_buffer   != NULL);
 
     rt_checkerboard_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(material          != NULL);
 
     memcpy(material, material_params, sizeof(rt_checkerboard_material_t));
 }
@@ -1340,10 +1344,10 @@ RT_API void rt_world_set_diffuse_material_params(rt_world_t*                    
     RT_ASSERT(material_params   != NULL);
 
     rt_diffuse_material_t* material_buffer = world->diffuse_material_buffer;
-    RT_ASSERT(material_buffer != NULL);
+    RT_ASSERT(material_buffer   != NULL);
 
     rt_diffuse_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(material          != NULL);
 
     memcpy(material, material_params, sizeof(rt_diffuse_material_t));
 }
@@ -1358,10 +1362,10 @@ RT_API void rt_world_set_metallic_material_params(rt_world_t*                   
     RT_ASSERT(material_params   != NULL);
 
     rt_metallic_material_t* material_buffer = world->metallic_material_buffer;
-    RT_ASSERT(material_buffer != NULL);
+    RT_ASSERT(material_buffer   != NULL);
 
     rt_metallic_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(material          != NULL);
 
     memcpy(material, material_params, sizeof(rt_metallic_material_t));
 }
@@ -1376,10 +1380,10 @@ RT_API void rt_world_set_dielectric_material_params(rt_world_t*                 
     RT_ASSERT(material_params   != NULL);
 
     rt_dielectric_material_t* material_buffer = world->dielectric_material_buffer;
-    RT_ASSERT(material_buffer != NULL);
+    RT_ASSERT(material_buffer   != NULL);
 
     rt_dielectric_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(material          != NULL);
 
     memcpy(material, material_params, sizeof(rt_dielectric_material_t));
 }
@@ -1635,6 +1639,7 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
         const rt_point_light_t* light   = &point_lights[i];
+        RT_ASSERT(light != NULL);
 
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);
@@ -1737,8 +1742,8 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
                                                  const rt_checkerboard_material_t*  material,
                                                  bool                               is_in_shadow)
 {
-    RT_ASSERT(hit_info != NULL);
-    RT_ASSERT(material != NULL);
+    RT_ASSERT(hit_info     != NULL);
+    RT_ASSERT(material     != NULL);
 
     uint32_t pos_x_quant    = (uint32_t)(ceil(hit_info->position.x * 0.5f));
     uint32_t pos_z_quant    = (uint32_t)(ceil(hit_info->position.z * 0.5f));
@@ -1792,7 +1797,7 @@ RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
                 break;
             }
             default: {
-                RT_ASSERT(0);
+                RT_ASSERT(0 && "Unspecified geometry type!");
                 break;
             }
         }
@@ -1832,7 +1837,8 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
                                      farthestZ,
                                      hit_info)) {
 
-            return rt_should_be_in_shadow(world, hit_info);
+            return rt_should_be_in_shadow(world,
+                                          hit_info);
         }
     }
     
@@ -1861,7 +1867,8 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
                                      newFarthestZ,
                                      hit_info)) {
 
-            return rt_should_be_in_shadow(world, hit_info);
+            return rt_should_be_in_shadow(world,
+                                          hit_info);
         }
     }
 
@@ -1917,7 +1924,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             break;
         default:
-            RT_ASSERT(0);
+            RT_ASSERT(0 && "Unhandled geometry type!");
             break;
     }
 
@@ -1992,7 +1999,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
         }
         */
         default:
-            RT_ASSERT(false && "Unhandled material type");
+            RT_ASSERT(false && "Unhandled material type!");
             return world->clear_color;
     }
 }
@@ -2007,11 +2014,13 @@ typedef struct
 rt_framebuffer_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_status_t rt_framebuffer_create(uint32_t           width,
-                                         uint32_t           height,
-                                         rt_framebuffer_t*  framebuffer)
+RT_API rt_status_t rt_framebuffer_create(uint32_t               width,
+                                         uint32_t               height,
+                                         rt_framebuffer_t*      framebuffer)
 {
-    RT_ASSERT(framebuffer != NULL);
+    RT_ASSERT(width         > 0);
+    RT_ASSERT(height        > 0);
+    RT_ASSERT(framebuffer   != NULL);
 
     framebuffer->rgb_buffer = (uint32_t*)RT_ALLOC(width *
                                                   height *
@@ -2027,11 +2036,13 @@ RT_API rt_status_t rt_framebuffer_create(uint32_t           width,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_status_t rt_framebuffer_resize(uint32_t           new_width,
-                                         uint32_t           new_height,
-                                         rt_framebuffer_t*  framebuffer)
+RT_API rt_status_t rt_framebuffer_resize(uint32_t               new_width,
+                                         uint32_t               new_height,
+                                         rt_framebuffer_t*      framebuffer)
 {
-    RT_ASSERT(framebuffer != NULL);
+    RT_ASSERT(new_width     > 0);
+    RT_ASSERT(new_height    > 0);
+    RT_ASSERT(framebuffer   != NULL);
 
     uint32_t* rgb_buffer    = (uint32_t*)RT_ALLOC(new_width *
                                                   new_height *
@@ -2066,10 +2077,8 @@ RT_API void rt_framebuffer_write(uint32_t               row,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_framebuffer_free(rt_framebuffer_t* framebuffer)
+RT_API void rt_framebuffer_free(rt_framebuffer_t*       framebuffer)
 {
-    RT_ASSERT(framebuffer != NULL);
-
     if (framebuffer->rgb_buffer) {
         RT_FREE(framebuffer->rgb_buffer);
         framebuffer->rgb_buffer = NULL;
@@ -2149,8 +2158,8 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 
         .sensitivity    = RT_FLOAT(0.1),
         .smoothing      = RT_FLOAT(0.01),
-        .movement_speed = RT_FLOAT(0.5),
-        .rotation_speed = RT_FLOAT(0.05),
+        .movement_speed = RT_FLOAT(0.02),
+        .rotation_speed = RT_FLOAT(0.002),
 
         .pitch_delta    = RT_FLOAT(0.0),
         .yaw_delta      = RT_FLOAT(0.0),
@@ -2165,46 +2174,42 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_forward(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_forward(rt_fps_camera_t*     camera,
+                                       rt_float_t           delta_time)
 {
     RT_ASSERT(camera != NULL);
 
     camera->velocity_new_z = rt_vec4_negate(rt_vec4_mul_scalar(camera->z_axis,
-                                                               camera->movement_speed));
+                                                               camera->movement_speed * delta_time));
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_forward(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
-    rt_vec4_zero(&camera->velocity_new_z);
+    camera->velocity_new_z = (rt_vec4_t){};
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_backward(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_backward(rt_fps_camera_t*    camera,
+                                        rt_float_t          delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->velocity_new_z = rt_vec4_mul_scalar(camera->z_axis,
-                                                camera->movement_speed);
+                                                camera->movement_speed * delta_time);
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_backward(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
-    rt_vec4_zero(&camera->velocity_new_z);
+    camera->velocity_new_z = (rt_vec4_t){};
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_left(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_left(rt_fps_camera_t*    camera,
+                                    rt_float_t          delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
     rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera->y_axis,
-                                                                     camera->z_axis)), camera->movement_speed);
+                                                                     camera->z_axis)),
+                                          camera->movement_speed * delta_time);
 
     camera->velocity_new_x = rt_vec4_negate(strafe);
 }
@@ -2212,18 +2217,16 @@ RT_API void rt_fps_camera_move_left(rt_fps_camera_t* camera)
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_left(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
-    rt_vec4_zero(&camera->velocity_new_x);
+    camera->velocity_new_x = (rt_vec4_t){};
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_right(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_right(rt_fps_camera_t*   camera,
+                                     rt_float_t         delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
     rt_vec4_t strafe = rt_vec4_mul_scalar(rt_vec4_norm(rt_vec4_cross(camera->y_axis,
-                                                                     camera->z_axis)), camera->movement_speed);
+                                                                     camera->z_axis)),
+                                          camera->movement_speed * delta_time);
 
     camera->velocity_new_x = strafe;
 }
@@ -2231,104 +2234,84 @@ RT_API void rt_fps_camera_move_right(rt_fps_camera_t* camera)
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_right(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
-    rt_vec4_zero(&camera->velocity_new_x);
+    camera->velocity_new_x = (rt_vec4_t){};
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_rotate_left(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_rotate_left(rt_fps_camera_t*      camera,
+                                      rt_float_t            delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->yaw_delta = camera->rotation_speed;
+    camera->yaw_delta = camera->rotation_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_rotating_left(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->yaw_delta = RT_FLOAT(0.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_rotate_right(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_rotate_right(rt_fps_camera_t*     camera,
+                                       rt_float_t           delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->yaw_delta = -camera->rotation_speed;
+    camera->yaw_delta = -camera->rotation_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_rotating_right(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->yaw_delta = RT_FLOAT(0.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_rotate_down(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_rotate_down(rt_fps_camera_t*  camera,
+                                      rt_float_t        delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->pitch_delta = -camera->rotation_speed;
+    camera->pitch_delta = -camera->rotation_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_rotating_down(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->pitch_delta = RT_FLOAT(0.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_rotate_up(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_rotate_up(rt_fps_camera_t*    camera,
+                                    rt_float_t          delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->pitch_delta = camera->rotation_speed;
+    camera->pitch_delta = camera->rotation_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_rotating_up(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->pitch_delta = RT_FLOAT(0.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_up(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_up(rt_fps_camera_t*  camera,
+                                  rt_float_t        delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->velocity_new_y.y = camera->movement_speed;
+    camera->velocity_new_y.y = camera->movement_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_up(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->velocity_new_y.y = RT_FLOAT(0.0);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_move_down(rt_fps_camera_t* camera)
+RT_API void rt_fps_camera_move_down(rt_fps_camera_t*    camera,
+                                    rt_float_t          delta_time)
 {
-    RT_ASSERT(camera != NULL);
-
-    camera->velocity_new_y.y = -camera->movement_speed;
+    camera->velocity_new_y.y = -camera->movement_speed * delta_time;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_fps_camera_stop_moving_down(rt_fps_camera_t* camera)
 {
-    RT_ASSERT(camera != NULL);
-
     camera->velocity_new_y.y = RT_FLOAT(0.0);
 }
 
@@ -2473,16 +2456,305 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
                                           rt_apply_gamma_custom,
                                           RT_GAMMA_INVERSE);
 
-            rt_framebuffer_write(row, col, pixel_color, framebuffer);
+            rt_framebuffer_write(row,
+                                 col,
+                                 pixel_color,
+                                 framebuffer);
         }
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////
+//////////////////// CAMERA MOVEMENT WITH NOTCURSES ///////////////////////
+///////////////////////////////////////////////////////////////////////////
+#ifdef RT_USE_NOTCURSES
+
+#include <notcurses/notcurses.h>
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    uint32_t quit_key;
+    uint32_t forward_key;
+    uint32_t backward_key;
+    uint32_t left_key;
+    uint32_t right_key;
+    uint32_t up_key;
+    uint32_t down_key;
+    uint32_t rotate_left_key;
+    uint32_t rotate_right_key;
+    uint32_t rotate_up_key;
+    uint32_t rotate_down_key;
+}
+rt_fps_camera_notcurses_keybindings_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_fps_camera_notcurses_keybindings_t rt_fps_camera_notcurses_default_keybindings(void)
+{
+    rt_fps_camera_notcurses_keybindings_t keybindings = {
+
+        .quit_key                = NCKEY_ESC,
+        .forward_key             = 'w',
+        .backward_key            = 's',
+        .left_key                = 'a',
+        .right_key               = 'd',
+        .up_key                  = 'q',
+        .down_key                = 'e',
+        .rotate_left_key         = NCKEY_LEFT,
+        .rotate_right_key        = NCKEY_RIGHT,
+        .rotate_up_key           = NCKEY_UP,
+        .rotate_down_key         = NCKEY_DOWN,
+
+    };
+
+    return keybindings;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_update_with_notcurses(rt_fps_camera_t*                                camera,
+                                                rt_float_t                                      delta_time,
+                                                const rt_fps_camera_notcurses_keybindings_t*    keybindings,
+                                                struct notcurses*                               nc,
+                                                bool*                                           is_running)
+{
+    RT_ASSERT(camera      != NULL);
+    RT_ASSERT(keybindings != NULL);
+    RT_ASSERT(nc          != NULL);
+    RT_ASSERT(is_running  != NULL);
+
+    struct ncinput input   = {};
+    uint32_t input_id      = 0;
+
+    while ((input_id = notcurses_get_nblock(nc, &input))) {
+
+        if (input.id == keybindings->quit_key && input.evtype == NCTYPE_RELEASE) {
+            *is_running = false;
+            return;
+        }
+
+        if (input.id == keybindings->forward_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_forward(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_forward(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (input.id == keybindings->backward_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_backward(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_backward(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (input.id == keybindings->left_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_left(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_left(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (input.id == keybindings->right_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_right(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_right(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (input.id == keybindings->rotate_left_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_rotate_left(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_rotating_left(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (input.id == keybindings->rotate_right_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_rotate_right(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_rotating_right(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (input.id == keybindings->rotate_down_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_rotate_down(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_rotating_down(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (input.id == keybindings->rotate_up_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_rotate_up(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_rotating_up(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (input.id == keybindings->up_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_up(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_up(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else if (input.id == keybindings->down_key) {
+            switch (input.evtype) {
+                case NCTYPE_PRESS:
+                    rt_fps_camera_move_down(camera, delta_time);
+                    break;
+                case NCTYPE_RELEASE:
+                    rt_fps_camera_stop_moving_down(camera);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+#endif
+
+
+///////////////////////////////////////////////////////////////////////////
 /////////////////////////// NOTCURSES SURFACE /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
+#define RT_USE_NOTCURSES
 #ifdef RT_USE_NOTCURSES
+
+#include <notcurses/notcurses.h>
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    struct ncplane*             render_surface;
+    struct ncvisual_options     visual_options;
+
+    uint32_t                    rows;
+    uint32_t                    cols;
+
+    ncblitter_e                 blitter;
+}
+rt_notcurses_surface_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane* ncplane)
+{
+    RT_ASSERT(ncplane != NULL);
+
+    rt_notcurses_surface_t surface = {};
+
+    surface.render_surface = ncplane;
+
+    surface.rows = 0;
+    surface.cols = 0;
+
+    ncplane_dim_yx(ncplane, &surface.rows, &surface.cols);
+
+    surface.rows *= 2;
+    surface.cols *= 2;
+
+    surface.visual_options.n         = ncplane;
+    surface.visual_options.leny      = surface.rows;
+    surface.visual_options.lenx      = surface.cols;
+    surface.visual_options.blitter   = NCBLIT_2x2;
+    surface.visual_options.scaling   = NCSCALE_NONE;
+    surface.visual_options.flags     = NCVISUAL_OPTION_NODEGRADE;
+
+    return surface;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
+                                        rt_framebuffer_t*           framebuffer)
+{
+    RT_ASSERT(surface      != NULL);
+    RT_ASSERT(framebuffer  != NULL);
+
+    uint32_t new_rows = 0;
+    uint32_t new_cols = 0;
+
+    ncplane_dim_yx(surface->render_surface, &new_rows, &new_cols);
+
+    new_rows *= 2;
+    new_cols *= 2;
+
+    if (new_rows != surface->rows || new_cols != surface->cols) {
+
+        RT_ASSERT(RT_STATUS_success == rt_framebuffer_resize(new_cols,
+                                                             new_rows,
+                                                             framebuffer));
+
+        surface->visual_options.leny = new_rows;
+        surface->visual_options.lenx = new_cols;
+
+        surface->rows = new_rows;
+        surface->cols = new_cols;
+
+        return true;
+    }
+
+    return false;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
+                                      const rt_framebuffer_t*       framebuffer)
+{
+    RT_ASSERT(surface      != NULL);
+    RT_ASSERT(framebuffer  != NULL);
+
+    RT_ASSERT(-1 != ncblit_rgba(framebuffer->rgb_buffer,
+                                (int32_t)(surface->cols * sizeof(uint32_t)),
+                                &surface->visual_options));
+}
 
 #endif
 
