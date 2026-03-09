@@ -2201,7 +2201,6 @@ typedef struct
     rt_vec4_t   velocity_new_z;
 
     rt_float_t  fovy;
-    rt_float_t  sensitivity;
     rt_float_t  smoothing;
     rt_float_t  movement_speed;
     rt_float_t  rotation_speed;
@@ -2249,7 +2248,6 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 
         .fovy           = RT_PI * RT_FLOAT(0.5),
 
-        .sensitivity    = RT_FLOAT(0.1),
         .smoothing      = RT_FLOAT(10.0),
         .movement_speed = RT_FLOAT(20.0),
         .rotation_speed = RT_FLOAT(2.0),
@@ -2754,6 +2752,231 @@ RT_API void rt_fps_camera_update_with_notcurses(rt_fps_camera_t*                
 
 #endif
 
+///////////////////////////////////////////////////////////////////////////
+///////////////// CAMERA MOVEMENT WITH JOYSTICK (SDL3) ////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef RT_USE_SDL3
+
+#include <SDL3/SDL.h>
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    int32_t quit_button;
+    int32_t horizontal_movement_axis;
+    int32_t vertical_movement_axis;
+    int32_t horizontal_rotation_axis;
+    int32_t vertical_rotation_axis;
+    int32_t up_button;
+    int32_t down_button;
+}
+rt_fps_camera_sdl3_joystick_keybindings_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    SDL_Gamepad*    gamepad;
+    int32_t         deadzone;
+}
+rt_sdl3_gamepad_info_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_fps_camera_sdl3_joystick_keybindings_t rt_fps_camera_sdl3_default_joystick_keybindings(void)
+{
+    rt_fps_camera_sdl3_joystick_keybindings_t keybindings = {
+        
+        .quit_button                = SDL_GAMEPAD_BUTTON_START,
+
+        .horizontal_movement_axis   = SDL_GAMEPAD_AXIS_LEFTX,
+        .vertical_movement_axis     = SDL_GAMEPAD_AXIS_LEFTY,
+
+        .horizontal_rotation_axis   = SDL_GAMEPAD_AXIS_RIGHTX,
+        .vertical_rotation_axis     = SDL_GAMEPAD_AXIS_RIGHTY,
+
+        .up_button                  = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
+        .down_button                = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+    };
+
+    return keybindings;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_sdl3_retrieve_gamepad(rt_sdl3_gamepad_info_t* gamepad_info)
+{
+    RT_ASSERT(gamepad_info != NULL);
+
+    if (gamepad_info->gamepad) {
+        return;
+    }
+
+    int32_t gamepad_cnt = 0;
+
+    SDL_JoystickID* ids = SDL_GetGamepads(&gamepad_cnt);
+
+    if (!gamepad_cnt) {
+        SDL_free(ids);
+        return;
+    }
+
+    for (int32_t i = 0; i < gamepad_cnt; ++i) {
+
+        SDL_Gamepad* selected = SDL_OpenGamepad(ids[i]);
+        if (!selected) {
+            continue;
+        }
+
+        if (!gamepad_info->gamepad) {
+            gamepad_info->gamepad = selected;
+        }
+
+        if (i > 0) {
+            SDL_CloseGamepad(selected);
+        }
+    }
+
+    SDL_free(ids);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*                                 camera,
+                                                    const rt_fps_camera_sdl3_joystick_keybindings_t* keybindings,
+                                                    rt_sdl3_gamepad_info_t*                          gamepad_info,
+                                                    rt_float_t                                       delta_time,
+                                                    bool*                                            is_running)
+{
+    RT_ASSERT(camera        != NULL);
+    RT_ASSERT(keybindings   != NULL);
+    RT_ASSERT(gamepad_info  != NULL);
+    RT_ASSERT(is_running    != NULL);
+
+    rt_sdl3_retrieve_gamepad(gamepad_info);
+
+    SDL_Gamepad* gamepad    = gamepad_info->gamepad;
+    int32_t deadzone        = gamepad_info->deadzone;
+
+    SDL_Event event         = {};
+
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+
+            case SDL_EVENT_QUIT: {
+
+                *is_running = false;
+
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_ADDED: {
+
+                if (!gamepad) {
+                    rt_sdl3_retrieve_gamepad(gamepad_info)  ;
+                }
+
+                break; 
+            }
+            case SDL_EVENT_GAMEPAD_REMOVED: {
+
+                if (gamepad) {
+                    SDL_CloseGamepad(gamepad);
+                    gamepad_info->gamepad = NULL;
+                }
+
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+
+                if (event.gbutton.button == keybindings->quit_button) {
+                    *is_running = false;
+                }
+                else if (event.gbutton.button == keybindings->up_button) {
+
+                    camera->velocity_new_y = rt_vec4_mul_scalar(camera->y_axis,
+                                                                camera->movement_speed * delta_time);
+
+                }
+                else if (event.gbutton.button == keybindings->down_button) {
+
+                    camera->velocity_new_y = rt_vec4_mul_scalar(camera->y_axis,
+                                                                -camera->movement_speed * delta_time);
+
+                }
+
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_BUTTON_UP: {
+
+                if (event.gbutton.button == keybindings->up_button) {
+                    camera->velocity_new_y = (rt_vec4_t){};
+                }
+                else if (event.gbutton.button == keybindings->down_button) {
+                    camera->velocity_new_y = (rt_vec4_t){};
+                }
+
+                break;
+            }
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+
+                if (!gamepad) {
+                    break;
+                }
+
+                int32_t leftX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX);
+
+                if (leftX < -deadzone || leftX > deadzone) {
+                    camera->yaw_delta = -(rt_float_t)leftX / RT_FLOAT(32768.0)
+                                                           * camera->rotation_speed
+                                                           * delta_time;
+                }
+                else {
+                    camera->yaw_delta = RT_FLOAT(0.0);
+                }
+
+                int32_t leftY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTY);
+                if (leftY < -deadzone || leftY > deadzone) {
+                    camera->pitch_delta = -((rt_float_t)leftY / RT_FLOAT(32768.0)
+                                                              * camera->rotation_speed
+                                                              * delta_time);
+                }
+                else {
+                    camera->pitch_delta = RT_FLOAT(0.0);
+                }
+
+                int32_t rightY = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY);
+
+                if (rightY < -deadzone || rightY > deadzone) {
+                    camera->velocity_new_z = rt_vec4_mul_scalar(camera->z_axis,
+                                                                ((rt_float_t)rightY / RT_FLOAT(32768.0)
+                                                                 * camera->movement_speed
+                                                                 * delta_time));
+                }
+                else {
+                    camera->velocity_new_z = (rt_vec4_t){};
+                }
+
+                int32_t rightX = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX);
+
+                if (rightX < -deadzone || rightX > deadzone) {
+
+                    rt_vec4_t strafe = rt_vec4_norm(rt_vec4_cross(camera->y_axis, camera->z_axis));
+
+                    camera->velocity_new_x = rt_vec4_mul_scalar(strafe,
+                                                                ((rt_float_t)rightX / RT_FLOAT(32768.0)
+                                                                 * camera->movement_speed
+                                                                 * delta_time));
+
+                }
+                else {
+                    camera->velocity_new_x = (rt_vec4_t){};
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+}
+
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////// NOTCURSES SURFACE /////////////////////////////
