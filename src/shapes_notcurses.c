@@ -217,7 +217,7 @@ int main(void)
                       RT_FLOAT(1.0), },
 
         .casts_shadows = true,
-        .intensity = RT_FLOAT(3.0),
+        .intensity = RT_FLOAT(100.0),
     };
 
     rt_world_set_point_light_params(&app.world,
@@ -238,10 +238,12 @@ int main(void)
                                &point_light_sphere_params);
 
     rt_emissive_material_t emissive_params = {
+
         .color = { RT_FLOAT(1.0),
                    RT_FLOAT(1.0),
                    RT_FLOAT(1.0),
                    RT_FLOAT(1.0), },
+
     };
 
     rt_idx_t point_light_emissive_material_index = 0;

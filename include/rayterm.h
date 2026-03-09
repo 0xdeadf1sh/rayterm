@@ -208,6 +208,11 @@ RT_API void rt_set_error_callback(rt_error_callback_t   callback,
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
+#ifndef RT_USE_FLOAT64
+#define exp expf
+#endif
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_float_t rt_apply_inverse_gamma(rt_float_t x)
 {
     return pow(x, RT_GAMMA_INVERSE);
@@ -1754,7 +1759,7 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
     }
 
     final_color = rt_vec4_add(final_color, material->ambient);
-    return rt_vec4_clamp(final_color, 0.0f, 1.0f);
+    return final_color;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1827,7 +1832,7 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
     }
 
     final_color = rt_vec4_add(final_color, material->ambient);
-    return rt_vec4_clamp(final_color, 0.0f, 1.0f);
+    return final_color;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2212,6 +2217,10 @@ typedef struct
 
     rt_float_t  near;
     rt_float_t  far;
+
+    rt_float_t  exposure;
+    rt_float_t  exposure_new;
+    bool        auto_exposure;
 }
 rt_fps_camera_t;
 
@@ -2259,6 +2268,10 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 
         .near           = RT_FLOAT(0.3),
         .far            = RT_FLOAT(1000.0),
+
+        .exposure       = RT_FLOAT(1.0),
+        .exposure_new   = RT_FLOAT(1.0),
+        .auto_exposure  = true,
     };
 
     return camera;
@@ -2517,6 +2530,14 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
     rt_vec4_t pixel00_loc       = rt_vec4_add(viewport_upper_left,
                                               pixel_delta_diag);
 
+    if (camera->auto_exposure) {
+        rt_float_t camera_exposure  = camera->exposure;
+        camera_exposure             = camera_exposure + delta_time * (camera->exposure_new - camera_exposure);
+        camera->exposure            = camera_exposure;
+    }
+
+    rt_float_t hdr_color_avg_accum = RT_FLOAT(0.0);
+
     for (uint32_t row = 0; row < rows; ++row) {
 
         rt_vec4_t ver = rt_vec4_mul_scalar(pixel_delta_v, (rt_float_t)row);
@@ -2537,22 +2558,36 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
                 .org = camera->position,
             };
 
-            rt_vec4_t pixel_color = rt_world_compute_color(world,
-                                                           r,
-                                                           camera->near,
-                                                           camera->far,
-                                                           camera->depth);
+            rt_vec4_t hdr_color = rt_world_compute_color(world,
+                                                         r,
+                                                         camera->near,
+                                                         camera->far,
+                                                         camera->depth);
 
-            pixel_color = rt_vec4_apply_2(pixel_color,
-                                          rt_apply_gamma_custom,
-                                          RT_GAMMA_INVERSE);
+            hdr_color_avg_accum += (hdr_color.x + hdr_color.y + hdr_color.z);;
+
+            rt_vec4_t tonemapped_color = rt_vec4_apply_1(rt_vec4_mul_scalar(hdr_color,
+                                                                            -camera->exposure),
+                                                         exp);
+
+            tonemapped_color = rt_vec4_sub((rt_vec4_t){ RT_FLOAT(1.0),
+                                                        RT_FLOAT(1.0),
+                                                        RT_FLOAT(1.0),
+                                                        RT_FLOAT(1.0)}, tonemapped_color);
+
+            rt_vec4_t gamma_correct_color = rt_vec4_apply_2(tonemapped_color,
+                                                            rt_apply_gamma_custom,
+                                                            RT_GAMMA_INVERSE);
 
             rt_framebuffer_write(row,
                                  col,
-                                 pixel_color,
+                                 gamma_correct_color,
                                  framebuffer);
         }
     }
+
+    hdr_color_avg_accum     = hdr_color_avg_accum / (rt_float_t)(cols * rows);
+    camera->exposure_new    = RT_FLOAT(1.0) / (hdr_color_avg_accum + RT_FLOAT(1.0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
