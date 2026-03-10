@@ -75,7 +75,8 @@ typedef int32_t rt_idx_t;
 #define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
 #define RT_PI                           RT_FLOAT(3.1415926)
 #define RT_EPSILON                      RT_FLOAT(0.000001)
-#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
+#define RT_SHADOW_BIAS                  RT_FLOAT(0.01)
+#define RT_MAX_SHADOW_LIGHTS            8
 #define RT_INIT_CAP                     8
 
 ///////////////////////////////////////////////////////////////////////////
@@ -624,6 +625,30 @@ RT_API rt_vec4_t rt_vec4_min(rt_vec4_t  p,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_vec4_max_vec4(rt_vec4_t p,
+                                  rt_vec4_t q)
+{
+    p.x = fmax(p.x, q.x);
+    p.y = fmax(p.y, q.y);
+    p.z = fmax(p.z, q.z);
+    p.w = fmax(p.w, q.w);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_vec4_min_vec4(rt_vec4_t p,
+                                  rt_vec4_t q)
+{
+    p.x = fmin(p.x, q.x);
+    p.y = fmin(p.y, q.y);
+    p.z = fmin(p.z, q.z);
+    p.w = fmin(p.w, q.w);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_vec4_clamp(rt_vec4_t            p,
                                rt_float_t           min,
                                rt_float_t           max)
@@ -750,7 +775,7 @@ typedef struct
 {
     rt_vec4_t   color_0;
     rt_vec4_t   color_1;
-    rt_float_t  shadow_factor;
+    rt_float_t  ambient_factor;
     bool        receives_shadows;
 }
 rt_checkerboard_material_t;
@@ -872,12 +897,12 @@ rt_plane_t;
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
                           rt_ray_t                  ray,
-                          rt_float_t                nearestZ,
-                          rt_float_t                farthestZ,
+                          rt_float_t                nearest_z,
+                          rt_float_t                farthest_z,
                           rt_hit_info_t*            info)
 {
     RT_ASSERT(info          != NULL);
-    RT_ASSERT(nearestZ      <= farthestZ);
+    RT_ASSERT(nearest_z     <= farthest_z);
 
     rt_float_t sphere_radius = sphere.geometry_params.radius;
     rt_vec4_t sphere_center  = sphere.geometry_params.center;
@@ -897,8 +922,8 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
     rt_float_t root_nearest  = (h - sqrt_disc) / a;
     rt_float_t root_farthest = (h + sqrt_disc) / a;
 
-    rt_float_t range_min     = nearestZ;
-    rt_float_t range_max     = farthestZ;
+    rt_float_t range_min     = nearest_z;
+    rt_float_t range_max     = farthest_z;
 
     rt_float_t root_chosen   = root_nearest;
 
@@ -929,20 +954,18 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_plane_hit(rt_plane_t             plane,
                          rt_ray_t               ray,
-                         rt_float_t             nearestZ,
-                         rt_float_t             farthestZ,
+                         rt_float_t             nearest_z,
+                         rt_float_t             farthest_z,
                          rt_hit_info_t*         info)
 {
     RT_ASSERT(info          != NULL);
-    RT_ASSERT(nearestZ      <= farthestZ);
+    RT_ASSERT(nearest_z     <= farthest_z);
 
     rt_vec4_t plane_position        = plane.geometry_params.position;
     rt_vec4_t plane_normal          = plane.geometry_params.normal;
     rt_float_t plane_side_length    = plane.geometry_params.side_length;
 
-    rt_vec4_t negated_plane_normal  = rt_vec4_negate(plane_normal);
-
-    rt_float_t denom                = rt_vec4_dot(negated_plane_normal,
+    rt_float_t denom                = rt_vec4_dot(plane_normal,
                                                   ray.dir);
 
     if (denom < RT_EPSILON) {
@@ -953,7 +976,7 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
                                           ray.org);
 
     rt_float_t t            = rt_vec4_dot(dir,
-                                          negated_plane_normal) / denom;
+                                          plane_normal) / denom;
 
     rt_vec4_t hit_position  = rt_ray_at(ray, t);
 
@@ -968,13 +991,13 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
         return false;
     }
 
-    if (t                   < nearestZ ||
-        t                   > farthestZ) {
+    if (t                   < nearest_z ||
+        t                   > farthest_z) {
         return false;
     }
 
     info->position          = rt_ray_at(ray, t);
-    info->normal            = negated_plane_normal;
+    info->normal            = rt_vec4_negate(plane_normal);
     info->t                 = t;
     info->is_front_facing   = true;
 
@@ -999,6 +1022,7 @@ typedef struct
     rt_vec4_t   color;
     rt_vec4_t   direction;
     rt_float_t  intensity;
+    rt_float_t  radius;
     bool        casts_shadows;
 }
 rt_directional_light_t;
@@ -1038,16 +1062,16 @@ RT_API rt_atmosphere_t rt_atmosphere_create_default()
 
         .atmospheric_height     = RT_FLOAT(10.0e3),
 
-        .rayleigh_scattering    = { RT_FLOAT(5.8e-6),
-                                    RT_FLOAT(13.5e-6),
-                                    RT_FLOAT(33.1e-6),
+        .rayleigh_scattering    = { RT_FLOAT(5.5e-6),
+                                    RT_FLOAT(13.0e-6),
+                                    RT_FLOAT(22.4e-6),
                                     RT_FLOAT(0.0), },
 
         .mie_scattering         = RT_FLOAT(21e-6),
 
-        .phase_eccentricity     = RT_FLOAT(0.8),
+        .phase_eccentricity     = RT_FLOAT(0.758),
 
-        .steps                  = 4,
+        .steps                  = 2,
 
     };
 
@@ -1655,12 +1679,12 @@ RT_API void rt_world_set_dielectric_material_params(rt_world_t*                 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
                                         rt_ray_t                ray,
-                                        rt_float_t              nearestZ,
-                                        rt_float_t              farthestZ,
+                                        rt_float_t              nearest_z,
+                                        rt_float_t              farthest_z,
                                         rt_hit_ext_info_t*      info)
 {
     RT_ASSERT(world     != NULL);
-    RT_ASSERT(nearestZ  <= farthestZ);
+    RT_ASSERT(nearest_z <= farthest_z);
     RT_ASSERT(info      != NULL);
 
     enum rt_face_cull_mode cull_mode = world->face_cull_mode;
@@ -1687,8 +1711,8 @@ RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
 
         if (rt_sphere_hit(spheres[i],
                           ray,
-                          nearestZ,
-                          farthestZ,
+                          nearest_z,
+                          farthest_z,
                           &hit_info)) {
 
             bool is_front_facing = hit_info.is_front_facing;
@@ -1726,12 +1750,12 @@ RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_plane_closest_hit(const rt_world_t*    world,
                                        rt_ray_t             ray,
-                                       rt_float_t           nearestZ,
-                                       rt_float_t           farthestZ,
+                                       rt_float_t           nearest_z,
+                                       rt_float_t           farthest_z,
                                        rt_hit_ext_info_t*   info)
 {
     RT_ASSERT(world         != NULL);
-    RT_ASSERT(nearestZ      <= farthestZ);
+    RT_ASSERT(nearest_z     <= farthest_z);
     RT_ASSERT(info          != NULL);
 
     enum rt_face_cull_mode cull_mode = world->face_cull_mode;
@@ -1758,8 +1782,8 @@ RT_API bool rt_world_plane_closest_hit(const rt_world_t*    world,
 
         if (rt_plane_hit(planes[i],
                          ray,
-                         nearestZ,
-                         farthestZ,
+                         nearest_z,
+                         farthest_z,
                          &hit_info)) {
 
             bool is_front_facing = hit_info.is_front_facing;
@@ -1797,8 +1821,8 @@ RT_API bool rt_world_plane_closest_hit(const rt_world_t*    world,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                      rt_ray_t              ray,
-                                     rt_float_t            nearestZ,
-                                     rt_float_t            farthestZ,
+                                     rt_float_t            nearest_z,
+                                     rt_float_t            farthest_z,
                                      rt_hit_ext_info_t*    info)
 {
     bool is_hit_bool_array[2]           = {};
@@ -1808,14 +1832,14 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
 
     is_hit_bool_array[0] = rt_world_sphere_closest_hit(world,
                                                        ray,
-                                                       nearestZ,
-                                                       farthestZ,
+                                                       nearest_z,
+                                                       farthest_z,
                                                        &hit_info_array[0]);
 
     is_hit_bool_array[1] = rt_world_plane_closest_hit(world,
                                                       ray,
-                                                      nearestZ,
-                                                      farthestZ,
+                                                      nearest_z,
+                                                      farthest_z,
                                                       &hit_info_array[1]);
 
     rt_idx_t hit_idx        = -1;
@@ -1853,23 +1877,60 @@ RT_API rt_vec4_t rt_fragment_shader_emissive(rt_emissive_material_t* material)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+#define RT_COMPUTE_SHADOW_FOR_LIGHT(LIGHT,                              \
+                                    MATERIAL,                           \
+                                    LIGHT_INDEX,                        \
+                                    LIGHT_TYPE,                         \
+                                    SHADOW_LIGHT_INDEX,                 \
+                                    SHADOW_LIGHT_TYPE)                  \
+{                                                                       \
+    if (LIGHT->casts_shadows &&                                         \
+        MATERIAL->receives_shadows &&                                   \
+        LIGHT_INDEX == SHADOW_LIGHT_INDEX &&                            \
+        LIGHT_TYPE == SHADOW_LIGHT_TYPE) {                              \
+                                                                        \
+        continue;                                                       \
+    }                                                                   \
+}
+
+///////////////////////////////////////////////////////////////////////////
+#define RT_FIND_INDEX_OF_SHADOW_LIGHT(SHADOW_LIGHTS,                    \
+                                      SHADOW_LIGHT_TYPES,               \
+                                      SHADOW_LIGHT_COUNT,               \
+                                      LIGHT_INDEX,                      \
+                                      LIGHT_TYPE,                       \
+                                      FOUND_INDEX,                      \
+                                      FOUND_TYPE)                       \
+{                                                                       \
+    FOUND_INDEX = -1;                                                   \
+    FOUND_TYPE  = RT_LIGHT_null_light;                                  \
+                                                                        \
+    for (rt_idx_t j = 0; j < SHADOW_LIGHT_COUNT; ++j) {                 \
+                                                                        \
+        if (SHADOW_LIGHTS[j] == LIGHT_INDEX &&                          \
+            SHADOW_LIGHT_TYPES[j] == LIGHT_TYPE) {                      \
+                                                                        \
+            FOUND_INDEX = SHADOW_LIGHTS[j];                             \
+            FOUND_TYPE  = SHADOW_LIGHT_TYPES[j];                        \
+                                                                        \
+            break;                                                      \
+        }                                                               \
+    }                                                                   \
+}                                                                       \
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_info,
                                             const rt_diffuse_material_t*    material,
                                             const rt_world_t*               world,
-                                            bool                            is_in_shadow)
+                                            const rt_idx_t*                 shadow_lights,
+                                            const enum rt_light_type*       shadow_light_types,
+                                            rt_idx_t                        shadow_light_count)
 {
     RT_ASSERT(hit_info  != NULL);
     RT_ASSERT(material  != NULL);
     RT_ASSERT(world     != NULL);
 
-    if (is_in_shadow && material->receives_shadows) {
-        return material->ambient;
-    }
-
-    rt_vec4_t final_color = { RT_FLOAT(0.0),
-                              RT_FLOAT(0.0),
-                              RT_FLOAT(0.0),
-                              RT_FLOAT(1.0) };
+    rt_vec4_t final_color = material->ambient;
 
     const rt_idx_t directional_light_count              = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
@@ -1879,8 +1940,32 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
         const rt_directional_light_t* light = &directional_lights[i];
         RT_ASSERT(light != NULL);
 
-        rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
-                                                             light->intensity);
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        rt_ray_t light_ray              = { .org = hit_info->position,
+                                            .dir = rt_vec4_negate(light->direction), };
+
+        rt_vec4_t light_color           = rt_atmosphere_scatter(&world->atmosphere,
+                                                                light_ray,
+                                                                rt_vec4_mul_scalar(light->color,
+                                                                                   light->intensity),
+                                                                light->direction);
 
         rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_negate(light->direction));
 
@@ -1888,7 +1973,7 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), 0.0f);
+                                                           hit_info->normal), RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -1905,6 +1990,24 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
         const rt_point_light_t* light   = &point_lights[i];
         RT_ASSERT(light != NULL);
 
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);
 
@@ -1915,7 +2018,7 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), 0.0f);
+                                                           hit_info->normal), RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -1924,7 +2027,6 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
                                                       diffuse);
     }
 
-    final_color = rt_vec4_add(final_color, material->ambient);
     return final_color;
 }
 
@@ -1932,22 +2034,18 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
 RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_info,
                                              const rt_metallic_material_t*  material,
                                              const rt_world_t*              world,
-                                             bool                           is_in_shadow)
+                                             const rt_idx_t*                shadow_lights,
+                                             const enum rt_light_type*      shadow_light_types,
+                                             rt_idx_t                       shadow_light_count)
+
 {
     RT_ASSERT(hit_info  != NULL);
     RT_ASSERT(material  != NULL);
     RT_ASSERT(world     != NULL);
 
-    if (is_in_shadow && material->receives_shadows) {
-        return material->ambient;
-    }
+    rt_vec4_t final_color = material->ambient;
 
-    rt_vec4_t final_color = { RT_FLOAT(0.0),
-                              RT_FLOAT(0.0),
-                              RT_FLOAT(0.0),
-                              RT_FLOAT(0.0) };
-
-    const rt_idx_t directional_light_count              = world->directional_light_count;
+    rt_idx_t directional_light_count              = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
 
     for (rt_idx_t i = 0; i < directional_light_count; ++i) {
@@ -1955,8 +2053,32 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
         const rt_directional_light_t* light = &directional_lights[i];
         RT_ASSERT(light != NULL);
 
-        rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
-                                                             light->intensity);
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        rt_ray_t light_ray             = { .org = hit_info->position,
+                                           .dir = rt_vec4_negate(light->direction), };
+
+        rt_vec4_t light_color           = rt_atmosphere_scatter(&world->atmosphere,
+                                                                light_ray,
+                                                                rt_vec4_mul_scalar(light->color,
+                                                                                   light->intensity),
+                                                                light->direction);
 
         rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_negate(light->direction));
 
@@ -1964,7 +2086,7 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), 0.0f);
+                                                           hit_info->normal), RT_FLOAT(0.0));
 
         rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
                                                              diff);
@@ -1981,15 +2103,36 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
         const rt_point_light_t* light   = &point_lights[i];
         RT_ASSERT(light != NULL);
 
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
         rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
                                                              light->intensity);
+
         rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_sub(light->position,
                                                                    hit_info->position));
 
         rt_vec4_t specular_color        = rt_vec4_mul(material->specular,
                                                       light_color);
+
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), 0.0f);
+                                                           hit_info->normal), RT_FLOAT(0.0));
+
         rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
                                                              diff);
 
@@ -1997,14 +2140,16 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
                                                       specular);
     }
 
-    final_color = rt_vec4_add(final_color, material->ambient);
     return final_color;
 }
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*               hit_info,
                                                  const rt_checkerboard_material_t*  material,
-                                                 bool                               is_in_shadow)
+                                                 const rt_world_t*                  world,
+                                                 const rt_idx_t*                    shadow_lights,
+                                                 const enum rt_light_type*          shadow_light_types,
+                                                 rt_idx_t                           shadow_light_count)
 {
     RT_ASSERT(hit_info     != NULL);
     RT_ASSERT(material     != NULL);
@@ -2016,16 +2161,105 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
     rt_vec4_t material_color = (pos_quant & 1) ? material->color_0
                                                : material->color_1;
 
+    rt_vec4_t final_color   = rt_vec4_mul_scalar(material_color,
+                                                 material->ambient_factor);
 
-    if (is_in_shadow && material->receives_shadows) {
+    const rt_idx_t directional_light_count              = world->directional_light_count;
+    const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
 
-        rt_vec4_t final_color = rt_vec4_mul_scalar(material_color,
-                                                   material->shadow_factor);
+    for (rt_idx_t i = 0; i < directional_light_count; ++i) {
 
-        return final_color;
+        const rt_directional_light_t* light = &directional_lights[i];
+        RT_ASSERT(light != NULL);
+
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_directional_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        rt_ray_t light_ray             = { .org = hit_info->position,
+                                           .dir = rt_vec4_negate(light->direction), };
+
+        rt_vec4_t light_color           = rt_atmosphere_scatter(&world->atmosphere,
+                                                                light_ray,
+                                                                rt_vec4_mul_scalar(light->color,
+                                                                                   light->intensity),
+                                                                light->direction);
+
+        rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_negate(light->direction));
+
+        rt_vec4_t diffuse_color         = rt_vec4_mul(material_color,
+                                                      light_color);
+
+        rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
+                                                           hit_info->normal), RT_FLOAT(0.0));
+
+        rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
+                                                             diff);
+
+        final_color                     = rt_vec4_add(final_color,
+                                                      diffuse);
     }
 
-    return material_color;
+    rt_idx_t point_light_count          = world->point_light_count;
+    const rt_point_light_t* point_lights= world->point_light_buffer;
+
+    for (rt_idx_t i = 0; i < point_light_count; ++i) {
+
+        const rt_point_light_t* light   = &point_lights[i];
+        RT_ASSERT(light != NULL);
+
+        rt_idx_t shadow_light_index             = -1;
+        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+
+        RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
+                                        shadow_light_types,
+                                        shadow_light_count,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        RT_COMPUTE_SHADOW_FOR_LIGHT(    light,
+                                        material,
+                                        i,
+                                        RT_LIGHT_point_light,
+                                        shadow_light_index,
+                                        shadow_light_type);
+
+        rt_vec4_t light_color           = rt_vec4_mul_scalar(light->color,
+                                                             light->intensity);
+
+        rt_vec4_t light_dir             = rt_vec4_norm(rt_vec4_sub(light->position,
+                                                                   hit_info->position));
+
+        rt_vec4_t diffuse_color         = rt_vec4_mul(material_color,
+                                                      light_color);
+
+        rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
+                                                           hit_info->normal), RT_FLOAT(0.0));
+
+        rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
+                                                             diff);
+
+        final_color                     = rt_vec4_add(final_color,
+                                                      diffuse);
+    }
+
+    return final_color;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2072,14 +2306,22 @@ RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_is_in_shadow(const rt_world_t*           world,
+RT_API void rt_is_in_shadow(const rt_world_t*           world,
                             rt_hit_ext_info_t*          hit_info,
-                            rt_float_t                  nearestZ,
-                            rt_float_t                  farthestZ)
+                            rt_float_t                  nearest_z,
+                            rt_float_t                  farthest_z,
+                            rt_idx_t*                   shadow_light_index,
+                            enum rt_light_type*         shadow_light_type,
+                            rt_idx_t                    max_shadow_lights)
 {
-    RT_ASSERT(world     != NULL);
-    RT_ASSERT(hit_info  != NULL);
-    RT_ASSERT(nearestZ  <= farthestZ);
+    RT_ASSERT(world                 != NULL);
+    RT_ASSERT(hit_info              != NULL);
+    RT_ASSERT(nearest_z             <= farthest_z);
+    RT_ASSERT(shadow_light_index    != NULL);
+    RT_ASSERT(shadow_light_type     != NULL);
+    RT_ASSERT(max_shadow_lights     >= 0);
+
+    rt_idx_t shadow_light_cnt       = 0;
 
     rt_idx_t directional_light_count                    = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
@@ -2089,20 +2331,35 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
         const rt_directional_light_t* light = &directional_lights[i];
         RT_ASSERT(light != NULL);
 
+        if (!light->casts_shadows) {
+            continue;
+        }
+
         rt_ray_t new_ray = {
+
             .org = rt_vec4_add(hit_info->info.position,
                                rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS)),
+
             .dir = rt_vec4_norm(rt_vec4_negate(light->direction)),
+
         };
 
         if (rt_world_any_closest_hit(world,
                                      new_ray,
-                                     nearestZ,
-                                     farthestZ,
+                                     nearest_z,
+                                     farthest_z,
                                      hit_info)) {
 
-            return rt_should_be_in_shadow(world,
-                                          hit_info);
+            bool should_be_in_shadow = rt_should_be_in_shadow(world,
+                                                              hit_info);
+
+            if (should_be_in_shadow && shadow_light_cnt < max_shadow_lights) {
+
+                shadow_light_index[shadow_light_cnt]   = i;
+                shadow_light_type[shadow_light_cnt]    = RT_LIGHT_directional_light;
+
+                ++shadow_light_cnt;
+            }
         }
     }
     
@@ -2114,6 +2371,10 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
         const rt_point_light_t* light = &point_lights[i];
         RT_ASSERT(light != NULL);
 
+        if (!light->casts_shadows) {
+            continue;
+        }
+
         rt_vec4_t org = rt_vec4_add(hit_info->info.position,
                                     rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS));
 
@@ -2122,21 +2383,34 @@ RT_API bool rt_is_in_shadow(const rt_world_t*           world,
             .dir = rt_vec4_norm(rt_vec4_sub(light->position, org)),
         };
 
-        rt_float_t newNearestZ  = RT_SHADOW_BIAS;
-        rt_float_t newFarthestZ = rt_vec4_dist(org, light->position) - RT_SHADOW_BIAS;
+        rt_float_t new_nearest_z  = RT_SHADOW_BIAS;
+        rt_float_t new_farthest_z = rt_vec4_dist(org, light->position) - RT_SHADOW_BIAS;
 
         if (rt_world_any_closest_hit(world,
                                      new_ray,
-                                     newNearestZ,
-                                     newFarthestZ,
+                                     new_nearest_z,
+                                     new_farthest_z,
                                      hit_info)) {
 
-            return rt_should_be_in_shadow(world,
-                                          hit_info);
+            bool should_be_in_shadow = rt_should_be_in_shadow(world,
+                                                              hit_info);
+
+            if (should_be_in_shadow && shadow_light_cnt < max_shadow_lights) {
+
+                shadow_light_index[shadow_light_cnt]   = i;
+                shadow_light_type[shadow_light_cnt]    = RT_LIGHT_point_light;
+
+                ++shadow_light_cnt;
+            }
         }
     }
 
-    return false;
+    for (rt_idx_t i = shadow_light_cnt; i < max_shadow_lights; ++i) {
+
+        shadow_light_index[i]   = -1;
+        shadow_light_type[i]    = RT_LIGHT_null_light;
+
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2162,19 +2436,20 @@ RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
 
         rt_vec4_t direction = rt_vec4_norm(rt_vec4_negate(light->direction));
 
-        if (fmax(rt_vec4_dot(ray.dir, direction), 0.0f) > RT_FLOAT(0.999)) {
-            total_scattered_light = rt_vec4_add(total_scattered_light,
-                                                rt_vec4_mul_scalar(light->color,
-                                                                   light->intensity));
-            continue;
-        }
-        
         rt_vec4_t scattered_light = rt_atmosphere_scatter(&world->atmosphere,
                                                           ray,
                                                           rt_vec4_mul_scalar(light->color,
                                                                              light->intensity),
                                                           light->direction);
 
+        rt_float_t disc_factor = RT_FLOAT(1.0) - light->radius;
+
+        if (fmax(rt_vec4_dot(ray.dir, direction), 0.0f) > disc_factor) {
+
+            total_scattered_light = rt_vec4_mul_scalar(scattered_light,
+                                                       light->intensity);
+        }
+        
         total_scattered_light = rt_vec4_add(total_scattered_light,
                                             scattered_light);
     }
@@ -2185,23 +2460,24 @@ RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                         rt_ray_t                ray,
-                                        rt_float_t              nearestZ,
-                                        rt_float_t              farthestZ,
+                                        rt_float_t              nearest_z,
+                                        rt_float_t              farthest_z,
                                         rt_idx_t                depth)
 {
     RT_ASSERT(world     != NULL);
-    RT_ASSERT(nearestZ  <= farthestZ);
+    RT_ASSERT(nearest_z <= farthest_z);
     RT_ASSERT(depth     >= 0);
 
     rt_hit_ext_info_t hit_info = {};
 
     if (!rt_world_any_closest_hit(world,
                                   ray,
-                                  nearestZ,
-                                  farthestZ,
+                                  nearest_z,
+                                  farthest_z,
                                   &hit_info)) {
 
-        return rt_world_compute_sky_color(world, ray);
+        return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
+                                world->clear_color);
     }
 
     enum rt_material_type material_type     = RT_MATERIAL_TYPE_null_material;
@@ -2237,15 +2513,22 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
     if (RT_MATERIAL_TYPE_null_material == material_type) {
 
-        return rt_world_compute_sky_color(world, ray);
+        return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
+                                world->clear_color);
     }
 
     rt_hit_ext_info_t hit_info_copy = hit_info;;
 
-    bool is_in_shadow = rt_is_in_shadow(world,
-                                        &hit_info_copy,
-                                        nearestZ,
-                                        farthestZ);
+    rt_idx_t shadow_lights[RT_MAX_SHADOW_LIGHTS]                    = {};
+    enum rt_light_type shadow_light_types[RT_MAX_SHADOW_LIGHTS]     = {};
+
+    rt_is_in_shadow(world,
+                    &hit_info_copy,
+                    nearest_z,
+                    farthest_z,
+                    shadow_lights,
+                    shadow_light_types,
+                    RT_MAX_SHADOW_LIGHTS);
 
     switch (material_type) {
 
@@ -2261,7 +2544,10 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             return rt_fragment_shader_checkerboard(&hit_info.info,
                                                    m,
-                                                   is_in_shadow);
+                                                   world,
+                                                   shadow_lights,
+                                                   shadow_light_types,
+                                                   RT_MAX_SHADOW_LIGHTS);
         }
         case RT_MATERIAL_TYPE_diffuse_material: {
 
@@ -2270,7 +2556,9 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
             return rt_fragment_shader_diffuse(&hit_info.info,
                                               m,
                                               world,
-                                              is_in_shadow);
+                                              shadow_lights,
+                                              shadow_light_types,
+                                              RT_MAX_SHADOW_LIGHTS);
         }
         case RT_MATERIAL_TYPE_metallic_material: {
 
@@ -2286,8 +2574,8 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             rt_vec4_t reflected_color = rt_world_compute_color(world,
                                                                reflected_ray,
-                                                               nearestZ,
-                                                               farthestZ,
+                                                               nearest_z,
+                                                               farthest_z,
                                                                depth - 1);
 
             rt_metallic_material_t* m = &world->metallic_material_buffer[material_index];
@@ -2295,7 +2583,9 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
             rt_vec4_t fragment_shader_output =  rt_fragment_shader_metallic(&hit_info.info,
                                                                             m,
                                                                             world,
-                                                                            is_in_shadow);
+                                                                            shadow_lights,
+                                                                            shadow_light_types,
+                                                                            RT_MAX_SHADOW_LIGHTS);
 
             return rt_vec4_mul(reflected_color, fragment_shader_output);
         }
@@ -2307,7 +2597,8 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
         */
         default:
             RT_ASSERT(false && "Unhandled material type!");
-            return rt_world_compute_sky_color(world, ray);
+            return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
+                                    world->clear_color);
     }
 }
 
@@ -2429,6 +2720,7 @@ typedef struct
 
     rt_float_t  exposure;
     rt_float_t  exposure_new;
+    rt_float_t  exposure_smoothing;
     bool        auto_exposure;
 }
 rt_fps_camera_t;
@@ -2438,49 +2730,50 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 {
     rt_fps_camera_t camera = {
 
-        .y_axis         = { RT_FLOAT(0.0),
-                            RT_FLOAT(1.0),
-                            RT_FLOAT(0.0),
-                            RT_FLOAT(0.0), },
+        .y_axis                 = { RT_FLOAT(0.0),
+                                    RT_FLOAT(1.0),
+                                    RT_FLOAT(0.0),
+                                    RT_FLOAT(0.0), },
 
-        .z_axis         = { RT_FLOAT(0.0),
-                            RT_FLOAT(0.0),
-                            RT_FLOAT(1.0),
-                            RT_FLOAT(0.0), },
+        .z_axis                 = { RT_FLOAT(0.0),
+                                    RT_FLOAT(0.0),
+                                    RT_FLOAT(1.0),
+                                    RT_FLOAT(0.0), },
 
-        .position       = { RT_FLOAT( 0.0),
-                            RT_FLOAT( 0.0),
-                            RT_FLOAT(-5.0),
-                            RT_FLOAT( 1.0), },
+        .position               = { RT_FLOAT( 0.0),
+                                    RT_FLOAT( 0.0),
+                                    RT_FLOAT(-5.0),
+                                    RT_FLOAT( 1.0), },
 
-        .rotation       = {},
-        .rotation_new   = {},
+        .rotation               = {},
+        .rotation_new           = {},
 
-        .velocity_x     = {},
-        .velocity_y     = {},
-        .velocity_z     = {},
+        .velocity_x             = {},
+        .velocity_y             = {},
+        .velocity_z             = {},
 
-        .velocity_new_x = {},
-        .velocity_new_y = {},
-        .velocity_new_z = {},
+        .velocity_new_x         = {},
+        .velocity_new_y         = {},
+        .velocity_new_z         = {},
 
-        .fovy           = RT_PI * RT_FLOAT(0.5),
+        .fovy                   = RT_PI * RT_FLOAT(0.5),
 
-        .smoothing      = RT_FLOAT(10.0),
-        .movement_speed = RT_FLOAT(20.0),
-        .rotation_speed = RT_FLOAT(2.0),
+        .smoothing              = RT_FLOAT(10.0),
+        .movement_speed         = RT_FLOAT(20.0),
+        .rotation_speed         = RT_FLOAT(2.0),
 
-        .pitch_delta    = RT_FLOAT(0.0),
-        .yaw_delta      = RT_FLOAT(0.0),
+        .pitch_delta            = RT_FLOAT(0.0),
+        .yaw_delta              = RT_FLOAT(0.0),
 
-        .depth          = 3,
+        .depth                  = 3,
 
-        .near           = RT_FLOAT(0.3),
-        .far            = RT_FLOAT(1000.0),
+        .near                   = RT_FLOAT(0.3),
+        .far                    = RT_FLOAT(1000.0),
 
-        .exposure       = RT_FLOAT(1.0),
-        .exposure_new   = RT_FLOAT(1.0),
-        .auto_exposure  = true,
+        .exposure               = RT_FLOAT(1.0),
+        .exposure_new           = RT_FLOAT(1.0),
+        .exposure_smoothing     = RT_FLOAT(0.5),
+        .auto_exposure          = true,
     };
 
     return camera;
@@ -2741,7 +3034,9 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
 
     if (camera->auto_exposure) {
         rt_float_t camera_exposure  = camera->exposure;
-        camera_exposure             = camera_exposure + delta_time * (camera->exposure_new - camera_exposure);
+        camera_exposure             = camera_exposure + delta_time *
+                                                        camera->exposure_smoothing *
+                                                        (camera->exposure_new - camera_exposure);
         camera->exposure            = camera_exposure;
     }
 

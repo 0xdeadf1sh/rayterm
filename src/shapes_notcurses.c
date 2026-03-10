@@ -96,10 +96,10 @@ int main(void)
                                                          notcurses_surface.rows,
                                                          &app.framebuffer));
 
-    app.world.clear_color = (rt_vec4_t){ RT_FLOAT(0.02),
-                                         RT_FLOAT(0.03),
-                                         RT_FLOAT(0.03),
-                                         RT_FLOAT(1.00), };
+    app.world.clear_color = (rt_vec4_t){ RT_FLOAT(0.001),
+                                         RT_FLOAT(0.001),
+                                         RT_FLOAT(0.001),
+                                         RT_FLOAT(1.0), };
 
     app.world.face_cull_mode = RT_FACE_cull_back;
 
@@ -121,11 +121,11 @@ int main(void)
                       RT_FLOAT( 1.0), },
 
         .normal = { RT_FLOAT(0.0),
-                    RT_FLOAT(1.0),
+                    RT_FLOAT(-1.0),
                     RT_FLOAT(0.0),
                     RT_FLOAT(0.0), },
 
-        .side_length = RT_FLOAT(50.0),
+        .side_length = RT_FLOAT(100.0),
     };
 
     rt_world_set_plane_params(&app.world, plane_index, &plane_params);
@@ -134,7 +134,7 @@ int main(void)
     RT_ASSERT(RT_STATUS_success == rt_world_push_checkerboard_material(&app.world,
                                                                        &plane_material_index));
 
-    rt_checkerboard_material_t mat_params = {
+    rt_checkerboard_material_t plane_mat_params = {
 
         .color_0 = { RT_FLOAT(0.5),
                      RT_FLOAT(0.5),
@@ -146,128 +146,113 @@ int main(void)
                      RT_FLOAT(0.05),
                      RT_FLOAT(1.0), },
 
-        .shadow_factor      = RT_FLOAT(0.2),
+        .ambient_factor     = RT_FLOAT(0.001),
 
         .receives_shadows   = true,
     };
 
     rt_world_set_checkerboard_material_params(&app.world,
                                               plane_material_index,
-                                              &mat_params);
+                                              &plane_mat_params);
 
     rt_plane_link_checkerboard_material(&app.world,
                                         plane_index,
                                         plane_material_index);
 
-    rt_idx_t sphere_index = 0;
+    rt_idx_t reflective_sphere_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
-                                                        &sphere_index));
+                                                        &reflective_sphere_index));
 
-    rt_sphere_params_t sphere_params = {
+    rt_sphere_params_t reflective_sphere_params = {
 
-        .center = { RT_FLOAT( 0.0),
-                    RT_FLOAT( 3.0),
+        .center = { RT_FLOAT( -10.0),
+                    RT_FLOAT( 0.5),
                     RT_FLOAT(-10.0),
                     RT_FLOAT( 1.0), },
 
-        .radius = RT_FLOAT(3.0),
+        .radius = RT_FLOAT(6.0),
 
     };
 
     rt_world_set_sphere_params(&app.world,
-                               sphere_index,
-                               &sphere_params);
+                               reflective_sphere_index,
+                               &reflective_sphere_params);
 
-    rt_idx_t sphere_material_index = 0;
+    rt_idx_t reflective_sphere_material_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_metallic_material(&app.world,
-                                                                   &sphere_material_index));
+                                                                   &reflective_sphere_material_index));
 
     rt_metallic_material_t sphere_mat_params = {
         
-        .ambient = { RT_FLOAT(0.04),
-                     RT_FLOAT(0.04),
-                     RT_FLOAT(0.08),
+        .ambient = { RT_FLOAT(0.01),
+                     RT_FLOAT(0.01),
+                     RT_FLOAT(0.01),
                      RT_FLOAT(1.0), },
 
-        .specular = { RT_FLOAT(0.4),   
-                      RT_FLOAT(0.4),
-                      RT_FLOAT(0.8),
+        .specular = { RT_FLOAT(1.0),   
+                      RT_FLOAT(1.0),
+                      RT_FLOAT(1.0),
                       RT_FLOAT(1.0), },
 
         .receives_shadows = true,
     };
 
-
     rt_world_set_metallic_material_params(&app.world,
-                                          sphere_material_index,
+                                          reflective_sphere_material_index,
                                           &sphere_mat_params);
 
     rt_sphere_link_metallic_material(&app.world,
-                                     sphere_index,
-                                     sphere_material_index);
+                                     reflective_sphere_index,
+                                     reflective_sphere_material_index);
 
-    rt_idx_t point_light_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_point_light(&app.world,
-                                                             &point_light_index));
-
-    rt_point_light_t point_light_params = {
-
-        .color = { RT_FLOAT(0.25),
-                   RT_FLOAT(1.0),
-                   RT_FLOAT(1.0),
-                   RT_FLOAT(1.0), },
-
-        .position = { RT_FLOAT(0.0),
-                      RT_FLOAT(10.0),
-                      RT_FLOAT(-5.0),
-                      RT_FLOAT(1.0), },
-
-        .casts_shadows  = true,
-        .intensity      = RT_FLOAT(1.0),
-    };
-
-    rt_world_set_point_light_params(&app.world,
-                                    point_light_index,
-                                    &point_light_params);
-
-    rt_idx_t point_light_sphere_index = 0;
+    rt_idx_t diffuse_sphere_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
-                                                        &point_light_sphere_index));
+                                                        &diffuse_sphere_index));
 
-    rt_sphere_params_t point_light_sphere_params = {
-        .center = point_light_params.position,
-        .radius = RT_FLOAT(0.5),
+    rt_sphere_params_t diffuse_sphere_params = {
+
+        .center = { RT_FLOAT( 10.0),
+                    RT_FLOAT( 0.5),
+                    RT_FLOAT(-10.0),
+                    RT_FLOAT( 1.0), },
+
+        .radius = RT_FLOAT(6.0),
+
     };
 
     rt_world_set_sphere_params(&app.world,
-                               point_light_sphere_index,
-                               &point_light_sphere_params);
+                               diffuse_sphere_index,
+                               &diffuse_sphere_params);
 
-    rt_emissive_material_t emissive_params = {
+    rt_idx_t diffuse_sphere_material_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_diffuse_material(&app.world,
+                                                                  &diffuse_sphere_material_index));
 
-        .color = rt_vec4_mul_scalar(point_light_params.color,
-                                    point_light_params.intensity),
+    rt_diffuse_material_t diffuse_mat_params = {
+        .ambient = { RT_FLOAT(0.0025),
+                     RT_FLOAT(0.005),
+                     RT_FLOAT(0.01),
+                     RT_FLOAT(1.0), },
 
+        .diffuse = { RT_FLOAT(0.25),
+                     RT_FLOAT(0.5),
+                     RT_FLOAT(1.0),
+                     RT_FLOAT(1.0), },
+
+        .receives_shadows = true,
     };
 
-    rt_idx_t point_light_emissive_material_index = 0;
-    RT_ASSERT(RT_STATUS_success == rt_world_push_emissive_material(&app.world,
-                                                                   &point_light_emissive_material_index));
+    rt_world_set_diffuse_material_params(&app.world,
+                                          diffuse_sphere_material_index,
+                                          &diffuse_mat_params);
 
-    rt_world_set_emissive_material_params(&app.world,
-                                          point_light_emissive_material_index,
-                                          &emissive_params);
-
-    rt_sphere_link_emissive_material(&app.world,
-                                     point_light_sphere_index,
-                                     point_light_emissive_material_index);
+    rt_sphere_link_diffuse_material(&app.world,
+                                    diffuse_sphere_index,
+                                    diffuse_sphere_material_index);
 
     bool is_running = true;
 
     rt_fps_camera_t fps_camera = rt_fps_camera_create();
-    fps_camera.auto_exposure = false;
-
-    rt_float_t point_light_radius       = RT_FLOAT(10.0);
 
     rt_fps_camera_notcurses_keybindings_t keyboard_bindings = rt_fps_camera_notcurses_default_keybindings();
     rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
@@ -285,33 +270,25 @@ int main(void)
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
         total_time += delta_time;
 
-        point_light_params.position.x       = sin(total_time) * point_light_radius;
-        point_light_params.position.z       = cos(total_time) * point_light_radius;
-        point_light_sphere_params.center    = point_light_params.position;
-
-        rt_world_set_point_light_params(&app.world,
-                                        point_light_index,
-                                        &point_light_params);
-
-        rt_world_set_sphere_params(&app.world,
-                                   point_light_sphere_index,
-                                   &point_light_sphere_params);
+        rt_vec4_t sun_light_dir = { RT_FLOAT(0.0), 
+                                   -sin(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
+                                    cos(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
+                                    RT_FLOAT(0.0), };
 
         rt_directional_light_t sun_light_params = {
 
-            .color          = { RT_FLOAT(0.99),
-                                RT_FLOAT(0.95),
-                                RT_FLOAT(0.85),
+            .color          = { RT_FLOAT(1.0),
+                                RT_FLOAT(1.0),
+                                RT_FLOAT(1.0),
                                 RT_FLOAT(1.0), },
 
-            .direction      = {  -cos(total_time * RT_FLOAT(0.1)),
-                                 -sin(total_time * RT_FLOAT(0.1)),
-                                 RT_FLOAT(0.0),
-                                 RT_FLOAT(0.0), },
+            .direction      = sun_light_dir,
 
-            .intensity      = RT_FLOAT(10.0),
+            .intensity      = RT_FLOAT(10000.0),
+
             .casts_shadows  = true,
 
+            .radius         = RT_FLOAT(0.0005),
         };
 
         rt_world_set_directional_light_params(&app.world,
@@ -344,7 +321,7 @@ int main(void)
 
         RT_ASSERT(-1 != notcurses_render(app.nc));
 
-        rt_timer_wait(&timer, RT_FLOAT(60.0));
+        rt_timer_wait(&timer, RT_FLOAT(240.0));
     }
 
     app_destroy(&app);
