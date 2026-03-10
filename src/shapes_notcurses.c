@@ -29,6 +29,7 @@
 ///////////////////////////////////////////////////////////////////////////
 #define TARGET_FPS              RT_FLOAT(240.0)
 #define PLANE_LENGTH            RT_FLOAT(50.0)
+#define SUN_SPEED               RT_FLOAT(0.1)
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////// APPLICATION STATE  ////////////////////////////
@@ -113,6 +114,10 @@ int main(void)
     RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(notcurses_surface.cols,
                                                          notcurses_surface.rows,
                                                          &app.framebuffer));
+
+    ///////////////////////////////////////////////////////////////////////////
+    //////////////////////////// WORLD & ATMOSPHERE ///////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
 
     app.world.clear_color = (rt_vec4_t){ RT_FLOAT(0.001),
                                          RT_FLOAT(0.001),
@@ -263,6 +268,7 @@ int main(void)
                                                                   &diffuse_sphere_material_index));
 
     rt_diffuse_material_t diffuse_mat_params = {
+
         .ambient = { RT_FLOAT(0.0025),
                      RT_FLOAT(0.005),
                      RT_FLOAT(0.01),
@@ -274,6 +280,7 @@ int main(void)
                      RT_FLOAT(1.0), },
 
         .receives_shadows = true,
+
     };
 
     rt_world_set_diffuse_material_params(&app.world,
@@ -291,6 +298,7 @@ int main(void)
     bool is_running = true;
 
     rt_fps_camera_t fps_camera = rt_fps_camera_create();
+    fps_camera.exposure_smoothing = RT_FLOAT(2.0);
 
     rt_fps_camera_notcurses_keybindings_t keyboard_bindings = rt_fps_camera_notcurses_default_keybindings();
     rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
@@ -309,8 +317,8 @@ int main(void)
         total_time += delta_time;
 
         rt_vec4_t yellow_sun_dir = { RT_FLOAT(0.0), 
-                                    -sin(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
-                                     cos(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
+                                    -sin(total_time * SUN_SPEED - RT_FLOAT(0.1)),
+                                     cos(total_time * SUN_SPEED - RT_FLOAT(0.1)),
                                      RT_FLOAT(0.0), };
 
         rt_directional_light_t yellow_sun_params = {
