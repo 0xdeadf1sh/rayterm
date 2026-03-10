@@ -831,6 +831,8 @@ enum rt_hit_geometry_type
     RT_HIT_null,
     RT_HIT_sphere,
     RT_HIT_plane,
+    RT_HIT_aabb,
+    RT_HIT_count,
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -898,6 +900,23 @@ typedef struct
     enum rt_material_type   material_type;
 }
 rt_plane_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_vec4_t               min_bounding_box;
+    rt_vec4_t               max_bounding_box;
+}
+rt_aabb_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_aabb_params_t        geometry_params;
+    rt_idx_t                material_index;
+    enum rt_material_type   material_type;
+}
+rt_aabb_t;
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
@@ -1004,6 +1023,73 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
     info->position          = rt_ray_at(ray, t);
     info->normal            = rt_vec4_negate(plane_normal);
     info->t                 = t;
+    info->is_front_facing   = true;
+
+    return true;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_aabb_hit(rt_aabb_t              aabb,
+                        rt_ray_t               ray,
+                        rt_float_t             nearest_z,
+                        rt_float_t             farthest_z,
+                        rt_hit_info_t*         info)
+{
+    RT_ASSERT(info      != NULL);
+    RT_ASSERT(nearest_z <= farthest_z);
+
+    rt_float_t tmin = (aabb.geometry_params.min_bounding_box.x - ray.org.x) / ray.dir.x;
+    rt_float_t tmax = (aabb.geometry_params.max_bounding_box.x - ray.org.x) / ray.dir.x;
+
+    if (tmin > tmax) {
+        rt_float_t tmp = tmin;
+        tmin = tmax;
+        tmax = tmp;
+    }
+
+    rt_float_t tymin = (aabb.geometry_params.min_bounding_box.y - ray.org.y) / ray.dir.y;
+    rt_float_t tymax = (aabb.geometry_params.max_bounding_box.y - ray.org.y) / ray.dir.y;
+
+    if (tymin > tymax) {
+        rt_float_t tmp = tymin;
+        tymin = tymax;
+        tymax = tmp;
+    }
+
+    if ((tmin > tymax) || (tymin > tmax)) {
+        return false;
+    }
+
+    tmin = fmax(tmin, nearest_z);
+    tmax = fmin(tmax, farthest_z);
+
+    rt_float_t tzmin = (aabb.geometry_params.min_bounding_box.z - ray.org.z) / ray.dir.z;
+    rt_float_t tzmax = (aabb.geometry_params.max_bounding_box.z - ray.org.z) / ray.dir.z;
+
+    if (tzmin > tzmax) {
+        rt_float_t tmp = tzmin;
+        tzmin = tzmax;
+        tzmax = tmp;
+    }
+
+    if ((tmin > tzmax) || (tzmin > tmax)) {
+        return false;
+    }
+
+    tmin = fmax(tmin, nearest_z);
+    tmax = fmin(tmax, farthest_z);
+
+    if (tmin < nearest_z) {
+        tmin = tmax;
+    }
+
+    if (tmin > farthest_z) {
+        return false;
+    }
+
+    info->position          = rt_ray_at(ray, tmin);
+    info->normal            = (rt_vec4_t){}; // TODO: compute normal
+    info->t                 = tmin;
     info->is_front_facing   = true;
 
     return true;
@@ -1248,6 +1334,7 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
     RT_WORLD_DEF_BUFFER(sphere)
     RT_WORLD_DEF_BUFFER(plane);
+    RT_WORLD_DEF_BUFFER(aabb)
 
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// MATERIALS /////////////////////////////////
@@ -1392,6 +1479,7 @@ RT_WORLD_DEFINE_PUSH(directional_light)
 RT_WORLD_DEFINE_PUSH(point_light)
 RT_WORLD_DEFINE_PUSH(sphere)
 RT_WORLD_DEFINE_PUSH(plane)
+RT_WORLD_DEFINE_PUSH(aabb)
 RT_WORLD_DEFINE_PUSH(emissive_material)
 RT_WORLD_DEFINE_PUSH(checkerboard_material)
 RT_WORLD_DEFINE_PUSH(diffuse_material)
@@ -1403,6 +1491,7 @@ RT_WORLD_DEFINE_POP(directional_light)
 RT_WORLD_DEFINE_POP(point_light)
 RT_WORLD_DEFINE_POP(sphere)
 RT_WORLD_DEFINE_POP(plane)
+RT_WORLD_DEFINE_POP(aabb)
 RT_WORLD_DEFINE_POP(emissive_material)
 RT_WORLD_DEFINE_POP(checkerboard_material)
 RT_WORLD_DEFINE_POP(diffuse_material)
@@ -1414,6 +1503,7 @@ RT_WORLD_DEFINE_RESERVE(directional_light)
 RT_WORLD_DEFINE_RESERVE(point_light)
 RT_WORLD_DEFINE_RESERVE(sphere)
 RT_WORLD_DEFINE_RESERVE(plane)
+RT_WORLD_DEFINE_RESERVE(aabb)
 RT_WORLD_DEFINE_RESERVE(emissive_material)
 RT_WORLD_DEFINE_RESERVE(checkerboard_material)
 RT_WORLD_DEFINE_RESERVE(diffuse_material)
@@ -1425,6 +1515,7 @@ RT_WORLD_DEFINE_FREE(directional_light)
 RT_WORLD_DEFINE_FREE(point_light)
 RT_WORLD_DEFINE_FREE(sphere)
 RT_WORLD_DEFINE_FREE(plane)
+RT_WORLD_DEFINE_FREE(aabb)
 RT_WORLD_DEFINE_FREE(emissive_material)
 RT_WORLD_DEFINE_FREE(checkerboard_material)
 RT_WORLD_DEFINE_FREE(diffuse_material)
@@ -1438,6 +1529,7 @@ RT_API void rt_world_free(rt_world_t* world)
     rt_world_free_point_lights                  (world);
     rt_world_free_spheres                       (world);
     rt_world_free_planes                        (world);
+    rt_world_free_aabbs                         (world);
     rt_world_free_emissive_materials            (world);
     rt_world_free_checkerboard_materials        (world);
     rt_world_free_diffuse_materials             (world);
@@ -1485,6 +1577,13 @@ RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, emissive_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, checkerboard_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, diffuse_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, metallic_material)
+RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, dielectric_material)
+
+///////////////////////////////////////////////////////////////////////////
 #define RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(GEOMETRY, MATERIAL)           \
 RT_API void RT_CONCAT4(rt_, GEOMETRY, _unlink_, MATERIAL)                   \
 (rt_world_t* world, rt_idx_t geometry_index)                                \
@@ -1518,6 +1617,13 @@ RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, checkerboard_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, diffuse_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
+
+///////////////////////////////////////////////////////////////////////////
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, emissive_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, checkerboard_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, diffuse_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, metallic_material)
+RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_world_set_directional_light_params(rt_world_t*                    world,
@@ -1589,6 +1695,24 @@ RT_API void rt_world_set_plane_params(rt_world_t*               world,
     RT_ASSERT(plane         != NULL);
 
     memcpy(&plane->geometry_params, plane_params, sizeof(rt_plane_params_t));
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_world_set_aabb_params(rt_world_t*                world,
+                                     rt_idx_t                   aabb_index,
+                                     const rt_aabb_params_t*    aabb_params)
+{
+    RT_ASSERT(world         != NULL);
+    RT_ASSERT(aabb_index    >= 0);
+    RT_ASSERT(aabb_params   != NULL);
+
+    rt_aabb_t* aabb_buffer  = world->aabb_buffer;
+    RT_ASSERT(aabb_buffer  != NULL);
+
+    rt_aabb_t* aabb = &aabb_buffer[aabb_index];
+    RT_ASSERT(aabb         != NULL);
+
+    memcpy(&aabb->geometry_params, aabb_params, sizeof(rt_aabb_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1682,146 +1806,85 @@ RT_API void rt_world_set_dielectric_material_params(rt_world_t*                 
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_sphere_closest_hit(const rt_world_t*       world,
-                                        rt_ray_t                ray,
-                                        rt_float_t              nearest_z,
-                                        rt_float_t              farthest_z,
-                                        rt_hit_ext_info_t*      info)
-{
-    RT_ASSERT(world     != NULL);
-    RT_ASSERT(nearest_z <= farthest_z);
-    RT_ASSERT(info      != NULL);
-
-    enum rt_face_cull_mode cull_mode = world->face_cull_mode;
-
-    if (RT_FACE_cull_both == cull_mode) {
-
-        info->geometry_type         = RT_HIT_null;
-        info->geometry_index        = 0;
-
-        return false;
-    }
-
-    rt_hit_info_t closest_hit_info  = {};
-    rt_idx_t closest_hit_index      = -1;
-
-    rt_idx_t sphere_count           = world->sphere_count;
-    RT_ASSERT(sphere_count         >= 0);
-
-    const rt_sphere_t* spheres      = world->sphere_buffer;
-
-    for (rt_idx_t i = 0; i < sphere_count; ++i) {
-
-        rt_hit_info_t hit_info = {};
-
-        if (rt_sphere_hit(spheres[i],
-                          ray,
-                          nearest_z,
-                          farthest_z,
-                          &hit_info)) {
-
-            bool is_front_facing = hit_info.is_front_facing;
-
-            if ((RT_FACE_cull_front == cull_mode &&  is_front_facing) ||
-                (RT_FACE_cull_back  == cull_mode && !is_front_facing)) {
-
-                continue;
-            }
-
-            if (-1 == closest_hit_index ||
-                hit_info.t < closest_hit_info.t) {
-
-                closest_hit_info    = hit_info;
-                closest_hit_index   = i;
-            }
-        }
-    }
-
-    if (-1 != closest_hit_index) {
-
-        info->info              = closest_hit_info;
-        info->geometry_type     = RT_HIT_sphere;
-        info->geometry_index    = closest_hit_index;
-
-        return true;
-    }
-
-    info->geometry_type         = RT_HIT_null;
-    info->geometry_index        = 0;
-
-    return false;
-}
+#define RT_WORLD_DEF_CLOSEST_HIT(GEOMETRY)                                  \
+RT_API bool RT_CONCAT3(rt_world_, GEOMETRY, _closest_hit)                   \
+(const rt_world_t*       world,                                             \
+ rt_ray_t                ray,                                               \
+ rt_float_t              nearest_z,                                         \
+ rt_float_t              farthest_z,                                        \
+ rt_hit_ext_info_t*      info)                                              \
+{                                                                           \
+    RT_ASSERT(world     != NULL);                                           \
+    RT_ASSERT(nearest_z <= farthest_z);                                     \
+    RT_ASSERT(info      != NULL);                                           \
+                                                                            \
+    enum rt_face_cull_mode cull_mode = world->face_cull_mode;               \
+                                                                            \
+    if (RT_FACE_cull_both == cull_mode) {                                   \
+                                                                            \
+        info->geometry_type         = RT_HIT_null;                          \
+        info->geometry_index        = 0;                                    \
+                                                                            \
+        return false;                                                       \
+    }                                                                       \
+                                                                            \
+    rt_hit_info_t closest_hit_info  = {};                                   \
+    rt_idx_t closest_hit_index      = -1;                                   \
+                                                                            \
+    rt_idx_t RT_CONCAT2(GEOMETRY, _count) =                                 \
+                                      world->RT_CONCAT2(GEOMETRY, _count);  \
+                                                                            \
+    RT_ASSERT(RT_CONCAT2(GEOMETRY, _count) >= 0);                           \
+                                                                            \
+    const RT_CONCAT3(rt_, GEOMETRY, _t)* RT_CONCAT2(GEOMETRY, _buffer) =    \
+        world->RT_CONCAT2(GEOMETRY, _buffer);                               \
+                                                                            \
+    for (rt_idx_t i = 0; i < RT_CONCAT2(GEOMETRY, _count); ++i) {           \
+                                                                            \
+        rt_hit_info_t hit_info = {};                                        \
+                                                                            \
+        if (RT_CONCAT3(rt_, GEOMETRY, _hit)(RT_CONCAT2(GEOMETRY, _buffer)[i],\
+                                            ray,                            \
+                                            nearest_z,                      \
+                                            farthest_z,                     \
+                                            &hit_info)) {                   \
+                                                                            \
+            bool is_front_facing = hit_info.is_front_facing;                \
+                                                                            \
+            if ((RT_FACE_cull_front == cull_mode &&  is_front_facing) ||    \
+                (RT_FACE_cull_back  == cull_mode && !is_front_facing)) {    \
+                                                                            \
+                continue;                                                   \
+            }                                                               \
+                                                                            \
+            if (-1 == closest_hit_index ||                                  \
+                hit_info.t < closest_hit_info.t) {                          \
+                                                                            \
+                closest_hit_info    = hit_info;                             \
+                closest_hit_index   = i;                                    \
+            }                                                               \
+        }                                                                   \
+    }                                                                       \
+                                                                            \
+    if (-1 != closest_hit_index) {                                          \
+                                                                            \
+        info->info              = closest_hit_info;                         \
+        info->geometry_type     = RT_CONCAT2(RT_HIT_, GEOMETRY);            \
+        info->geometry_index    = closest_hit_index;                        \
+                                                                            \
+        return true;                                                        \
+    }                                                                       \
+                                                                            \
+    info->geometry_type         = RT_HIT_null;                              \
+    info->geometry_index        = 0;                                        \
+                                                                            \
+    return false;                                                           \
+}                                                                           \
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_plane_closest_hit(const rt_world_t*    world,
-                                       rt_ray_t             ray,
-                                       rt_float_t           nearest_z,
-                                       rt_float_t           farthest_z,
-                                       rt_hit_ext_info_t*   info)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(nearest_z     <= farthest_z);
-    RT_ASSERT(info          != NULL);
-
-    enum rt_face_cull_mode cull_mode = world->face_cull_mode;
-
-    if (RT_FACE_cull_both == cull_mode) {
-
-        info->geometry_type     = RT_HIT_null;
-        info->geometry_index    = 0;
-
-        return false;
-    }
-
-    rt_hit_info_t closest_hit_info  = {};
-    rt_idx_t closest_hit_index      = -1;
-
-    rt_idx_t plane_count            = world->plane_count;
-    RT_ASSERT(plane_count          >= 0);
-
-    const rt_plane_t* planes        = world->plane_buffer;
-
-    for (rt_idx_t i = 0; i < plane_count; ++i) {
-
-        rt_hit_info_t hit_info = {};
-
-        if (rt_plane_hit(planes[i],
-                         ray,
-                         nearest_z,
-                         farthest_z,
-                         &hit_info)) {
-
-            bool is_front_facing = hit_info.is_front_facing;
-
-            if ((RT_FACE_cull_front == cull_mode &&  is_front_facing) ||
-                (RT_FACE_cull_back  == cull_mode && !is_front_facing)) {
-
-                continue;
-            }
-
-            if (-1 == closest_hit_index ||
-                hit_info.t < closest_hit_info.t) {
-
-                closest_hit_info    = hit_info;
-                closest_hit_index   = i;
-            }
-        }
-    }
-
-    if (-1 != closest_hit_index) {
-
-        info->info              = closest_hit_info;
-        info->geometry_type     = RT_HIT_plane;
-        info->geometry_index    = closest_hit_index;
-
-        return true;
-    }
-
-    info->geometry_type         = RT_HIT_null;
-    info->geometry_index        = 0;
-
-    return false;
-}
+RT_WORLD_DEF_CLOSEST_HIT(sphere)
+RT_WORLD_DEF_CLOSEST_HIT(plane)
+RT_WORLD_DEF_CLOSEST_HIT(aabb)
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
@@ -1830,27 +1893,33 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                      rt_float_t            farthest_z,
                                      rt_hit_ext_info_t*    info)
 {
-    bool is_hit_bool_array[2]           = {};
-    rt_hit_ext_info_t hit_info_array[2] = {};
+    bool is_hit_bool_array[RT_HIT_count]            = {};
+    rt_hit_ext_info_t hit_info_array[RT_HIT_count]  = {};
 
     RT_ASSERT(RT_BUFFER_LEN(is_hit_bool_array) == RT_BUFFER_LEN(hit_info_array));
 
-    is_hit_bool_array[0] = rt_world_sphere_closest_hit(world,
-                                                       ray,
-                                                       nearest_z,
-                                                       farthest_z,
-                                                       &hit_info_array[0]);
+    is_hit_bool_array[RT_HIT_sphere] = rt_world_sphere_closest_hit(world,
+                                                                   ray,
+                                                                   nearest_z,
+                                                                   farthest_z,
+                                                                   &hit_info_array[RT_HIT_sphere]);
 
-    is_hit_bool_array[1] = rt_world_plane_closest_hit(world,
-                                                      ray,
-                                                      nearest_z,
-                                                      farthest_z,
-                                                      &hit_info_array[1]);
+    is_hit_bool_array[RT_HIT_plane] = rt_world_plane_closest_hit(world,
+                                                                 ray,
+                                                                 nearest_z,
+                                                                 farthest_z,
+                                                                 &hit_info_array[RT_HIT_plane]);
+
+    is_hit_bool_array[RT_HIT_aabb] = rt_world_aabb_closest_hit(world,
+                                                               ray,
+                                                               nearest_z,
+                                                               farthest_z,
+                                                               &hit_info_array[RT_HIT_aabb]);
 
     rt_idx_t hit_idx        = -1;
     rt_float_t closest_z    = RT_FLOAT(0.0);
 
-    for (uint32_t i = 0; i < RT_BUFFER_LEN(is_hit_bool_array); ++i) {
+    for (uint32_t i = 0; i < RT_HIT_count; ++i) {
 
         if (is_hit_bool_array[i]) {
 
@@ -2299,6 +2368,16 @@ RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
 
                 break;
             }
+            case RT_HIT_aabb: {
+                
+                rt_aabb_t* aabb = &world->aabb_buffer[hit_info->geometry_index];
+                RT_ASSERT(aabb != NULL);
+
+                material_type   = aabb->material_type;
+                material_index  = aabb->material_index;
+
+                break;
+            }
             default: {
                 RT_ASSERT(0 && "Unspecified geometry type!");
                 break;
@@ -2509,6 +2588,14 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             material_type   = world->plane_buffer[geometry_index].material_type;
             material_index  = world->plane_buffer[geometry_index].material_index;
+
+            break;
+        case RT_HIT_aabb:
+
+            RT_ASSERT(world->aabb_buffer != NULL);
+
+            material_type   = world->aabb_buffer[geometry_index].material_type;
+            material_index  = world->aabb_buffer[geometry_index].material_index;
 
             break;
         default:

@@ -25,6 +25,14 @@
 #include <assert.h>
 
 ///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// CONSTANTS ////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+#define TARGET_FPS              RT_FLOAT(240.0)
+#define PLANE_LENGTH            RT_FLOAT(50.0)
+
+///////////////////////////////////////////////////////////////////////////
+/////////////////////////// APPLICATION STATE  ////////////////////////////
+///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
     struct notcurses*       nc;
@@ -55,6 +63,10 @@ static void app_destroy(app_state_t* state)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+/// NOTE: Because we are using notcurses, we must use a custom error handler
+/// that calls app_destroy() before exiting. Otherwise, the terminal
+/// will not be restored to its original state.
+///////////////////////////////////////////////////////////////////////////
 static void error_callback(const char*      filename,
                            uint32_t         line,
                            const char*      function_name,
@@ -71,6 +83,8 @@ static void error_callback(const char*      filename,
     exit(EXIT_FAILURE);
 }
 
+///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// ENTRY ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 int main(void)
 {
@@ -137,7 +151,7 @@ int main(void)
                     RT_FLOAT(0.0),
                     RT_FLOAT(0.0), },
 
-        .side_length = RT_FLOAT(100.0),
+        .side_length = PLANE_LENGTH,
     };
 
     rt_world_set_plane_params(&app.world, plane_index, &plane_params);
@@ -345,7 +359,7 @@ int main(void)
 
         RT_ASSERT(-1 != notcurses_render(app.nc));
 
-        rt_timer_wait(&timer, RT_FLOAT(240.0));
+        rt_timer_wait(&timer, TARGET_FPS);
     }
 
     app_destroy(&app);
