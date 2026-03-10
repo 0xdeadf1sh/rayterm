@@ -200,6 +200,11 @@ RT_API void rt_set_error_callback(rt_error_callback_t   callback,
 
 ///////////////////////////////////////////////////////////////////////////
 #ifndef RT_USE_FLOAT64
+#define tan tanf
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_USE_FLOAT64
 #define ceil ceilf
 #endif
 
@@ -478,7 +483,7 @@ RT_API rt_vec4_t rt_vec4_cross(rt_vec4_t p,
         .x = p.y * q.z - p.z * q.y,
         .y = p.z * q.x - p.x * q.z,
         .z = p.x * q.y - p.y * q.x,
-        .w = 0.0f,
+        .w = RT_FLOAT(0.0),
     };
 
     return r;
@@ -671,7 +676,7 @@ RT_API rt_vec4_t rt_vec4_reflect(rt_vec4_t p,
     p.x -= n.x * d;
     p.y -= n.y * d;
     p.z -= n.z * d;
-    p.w  = 0.0f;
+    p.w  = RT_FLOAT(0.0);
 
     return p;
 }
@@ -2444,7 +2449,7 @@ RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
 
         rt_float_t disc_factor = RT_FLOAT(1.0) - light->radius;
 
-        if (fmax(rt_vec4_dot(ray.dir, direction), 0.0f) > disc_factor) {
+        if (fmax(rt_vec4_dot(ray.dir, direction), RT_FLOAT(0.0)) > disc_factor) {
 
             total_scattered_light = rt_vec4_mul_scalar(scattered_light,
                                                        light->intensity);
@@ -2671,7 +2676,7 @@ RT_API void rt_framebuffer_write(uint32_t               row,
     RT_ASSERT(col            < framebuffer->width);
 
     uint32_t index = row * framebuffer->width + col;
-    framebuffer->rgb_buffer[index] = rt_vec4_to_uint32_alpha(color, 1.0f);
+    framebuffer->rgb_buffer[index] = rt_vec4_to_uint32_alpha(color, RT_FLOAT(1.0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2984,7 +2989,7 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
     rt_float_t focal_length     = rt_vec4_dist(camera->position,
                                                camera_look_at);
 
-    rt_float_t camera_h         = tanf(camera->fovy * RT_FLOAT(0.5));
+    rt_float_t camera_h         = tan(camera->fovy * RT_FLOAT(0.5));
 
     rt_float_t viewport_height  = RT_FLOAT(2.0) * camera_h * focal_length;
 

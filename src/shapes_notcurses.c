@@ -74,6 +74,10 @@ static void error_callback(const char*      filename,
 ///////////////////////////////////////////////////////////////////////////
 int main(void)
 {
+    ///////////////////////////////////////////////////////////////////////////
+    ///////////////////////////// INITIALIZATION //////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
     app_state_t app = {};
     app.gamepad_info.deadzone = 1000;
 
@@ -105,9 +109,17 @@ int main(void)
 
     app.world.atmosphere = rt_atmosphere_create_default();
 
+    ///////////////////////////////////////////////////////////////////////////
+    ////////////////////////// DIRECTIONAL LIGHTS /////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
     rt_idx_t yellow_sun_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_directional_light(&app.world,
                                                                    &yellow_sun_index));
+
+    ///////////////////////////////////////////////////////////////////////////
+    //////////////////////// PLANE GEOMETRY & MATERIAL ////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
 
     rt_idx_t plane_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_plane(&app.world,
@@ -159,6 +171,10 @@ int main(void)
                                         plane_index,
                                         plane_material_index);
 
+    ///////////////////////////////////////////////////////////////////////////
+    ///////////////// REFLECTIVE SPHERE GEOMETRY & MATERIAL ///////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
     rt_idx_t reflective_sphere_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
                                                         &reflective_sphere_index));
@@ -205,6 +221,10 @@ int main(void)
                                      reflective_sphere_index,
                                      reflective_sphere_material_index);
 
+    ///////////////////////////////////////////////////////////////////////////
+    ////////////////// DIFFUSE SPHERE GEOMETRY & MATERIAL /////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
     rt_idx_t diffuse_sphere_index = 0;
     RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
                                                         &diffuse_sphere_index));
@@ -250,6 +270,10 @@ int main(void)
                                     diffuse_sphere_index,
                                     diffuse_sphere_material_index);
 
+    ///////////////////////////////////////////////////////////////////////////
+    /////////////////////////////// RENDER LOOP ///////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
     bool is_running = true;
 
     rt_fps_camera_t fps_camera = rt_fps_camera_create();
@@ -270,19 +294,19 @@ int main(void)
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
         total_time += delta_time;
 
-        rt_vec4_t sun_light_dir = { RT_FLOAT(0.0), 
-                                   -sin(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
-                                    cos(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
-                                    RT_FLOAT(0.0), };
+        rt_vec4_t yellow_sun_dir = { RT_FLOAT(0.0), 
+                                    -sin(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
+                                     cos(total_time * RT_FLOAT(0.01) - RT_FLOAT(0.1)),
+                                     RT_FLOAT(0.0), };
 
-        rt_directional_light_t sun_light_params = {
+        rt_directional_light_t yellow_sun_params = {
 
             .color          = { RT_FLOAT(1.0),
                                 RT_FLOAT(1.0),
                                 RT_FLOAT(1.0),
                                 RT_FLOAT(1.0), },
 
-            .direction      = sun_light_dir,
+            .direction      = yellow_sun_dir,
 
             .intensity      = RT_FLOAT(10000.0),
 
@@ -293,7 +317,7 @@ int main(void)
 
         rt_world_set_directional_light_params(&app.world,
                                               yellow_sun_index,
-                                              &sun_light_params);
+                                              &yellow_sun_params);
 
         rt_fps_camera_update_with_sdl3_joystick(&fps_camera,
                                                 &joystick_bindings,
