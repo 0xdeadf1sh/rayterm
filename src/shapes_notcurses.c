@@ -1,3 +1,5 @@
+// llama:disable
+//
 // rayterm: ray-tracer for the terminal
 // Copyright (C) 2026 0xdeadf1.sh
 // 
@@ -27,9 +29,9 @@
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////////// CONSTANTS ////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
-#define TARGET_FPS              RT_FLOAT(240.0)
+#define TARGET_FPS              RT_FLOAT(60.0)
 #define PLANE_LENGTH            RT_FLOAT(50.0)
-#define SUN_SPEED               RT_FLOAT(0.1)
+#define SUN_SPEED               RT_FLOAT(0.01)
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////// APPLICATION STATE  ////////////////////////////
@@ -201,7 +203,7 @@ int main(void)
     rt_sphere_params_t reflective_sphere_params = {
 
         .center = { RT_FLOAT( -10.0),
-                    RT_FLOAT( 0.5),
+                    RT_FLOAT( 1.0),
                     RT_FLOAT(-10.0),
                     RT_FLOAT( 1.0), },
 
@@ -224,7 +226,7 @@ int main(void)
                      RT_FLOAT(0.01),
                      RT_FLOAT(1.0), },
 
-        .specular = { RT_FLOAT(1.0),   
+        .specular = { RT_FLOAT(1.0),
                       RT_FLOAT(1.0),
                       RT_FLOAT(1.0),
                       RT_FLOAT(1.0), },
@@ -280,31 +282,37 @@ int main(void)
                      RT_FLOAT(1.0), },
 
         .receives_shadows = true,
-
     };
 
     rt_world_set_diffuse_material_params(&app.world,
-                                          diffuse_sphere_material_index,
-                                          &diffuse_mat_params);
+                                         diffuse_sphere_material_index,
+                                         &diffuse_mat_params);
 
     rt_sphere_link_diffuse_material(&app.world,
                                     diffuse_sphere_index,
                                     diffuse_sphere_material_index);
 
     ///////////////////////////////////////////////////////////////////////////
+    //////////////////////////////// CAMERA ///////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
+    rt_fps_camera_t fps_camera      = rt_fps_camera_create();
+    fps_camera.position             = (rt_vec4_t){ RT_FLOAT( 0.0),
+                                                   RT_FLOAT( 2.0),
+                                                   RT_FLOAT( 9.0),
+                                                   RT_FLOAT( 1.0), };
+
+    rt_fps_camera_notcurses_keybindings_t keyboard_bindings     = rt_fps_camera_notcurses_default_keybindings();
+    rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
+
+
+    ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// RENDER LOOP ///////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
 
-    bool is_running = true;
-
-    rt_fps_camera_t fps_camera = rt_fps_camera_create();
-    fps_camera.exposure_smoothing = RT_FLOAT(2.0);
-
-    rt_fps_camera_notcurses_keybindings_t keyboard_bindings = rt_fps_camera_notcurses_default_keybindings();
-    rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
-
-    rt_timer_t timer = {};
-    rt_float_t total_time = RT_FLOAT(0.0);
+    bool is_running         = true;
+    rt_timer_t timer        = {};
+    rt_float_t total_time   = RT_FLOAT(0.0);
 
     while (is_running) {
 
@@ -317,9 +325,11 @@ int main(void)
         total_time += delta_time;
 
         rt_vec4_t yellow_sun_dir = { RT_FLOAT(0.0), 
-                                    -sin(total_time * SUN_SPEED - RT_FLOAT(0.1)),
-                                     cos(total_time * SUN_SPEED - RT_FLOAT(0.1)),
+                                     RT_FLOAT(-1.0),
+                                     RT_FLOAT(-1.0),
                                      RT_FLOAT(0.0), };
+
+        yellow_sun_dir = rt_vec4_norm(yellow_sun_dir);
 
         rt_directional_light_t yellow_sun_params = {
 
@@ -330,7 +340,7 @@ int main(void)
 
             .direction      = yellow_sun_dir,
 
-            .intensity      = RT_FLOAT(10000.0),
+            .intensity      = RT_FLOAT(100.0),
 
             .casts_shadows  = true,
 
@@ -340,6 +350,14 @@ int main(void)
         rt_world_set_directional_light_params(&app.world,
                                               yellow_sun_index,
                                               &yellow_sun_params);
+
+        diffuse_mat_params.diffuse.x = (sinf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
+        diffuse_mat_params.diffuse.y = (cosf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
+        diffuse_mat_params.diffuse.z = (sinf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
+
+        rt_world_set_diffuse_material_params(&app.world,
+                                             diffuse_sphere_material_index,
+                                             &diffuse_mat_params);
 
         rt_fps_camera_update_with_sdl3_joystick(&fps_camera,
                                                 &joystick_bindings,

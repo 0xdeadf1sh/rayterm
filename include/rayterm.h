@@ -1,3 +1,5 @@
+// llama:disable
+//
 // rayterm: ray-tracer for the terminal tritten in modern C (version 23)
 // Copyright (C) 2026 0xdeadf1.sh
 // 
@@ -75,7 +77,7 @@ typedef int32_t rt_idx_t;
 #define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
 #define RT_PI                           RT_FLOAT(3.1415926)
 #define RT_EPSILON                      RT_FLOAT(0.000001)
-#define RT_SHADOW_BIAS                  RT_FLOAT(0.01)
+#define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
 #define RT_MAX_SHADOW_LIGHTS            8
 #define RT_INIT_CAP                     8
 
@@ -243,6 +245,20 @@ RT_API rt_float_t rt_clamp(rt_float_t x,
                            rt_float_t maximum)
 {
     return fmin(maximum, fmax(x, minimum));
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_float_equal(rt_float_t a,
+                           rt_float_t b,
+                           rt_float_t epsilon)
+{
+    rt_float_t diff = fabs(a - b);
+
+    if (diff <= epsilon) {
+        return true;
+    }
+
+    return diff <= (fmax(fabs(a), fabs(b)) * epsilon);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -1812,13 +1828,14 @@ RT_API bool RT_CONCAT3(rt_world_, GEOMETRY, _closest_hit)                   \
  rt_ray_t                ray,                                               \
  rt_float_t              nearest_z,                                         \
  rt_float_t              farthest_z,                                        \
- rt_hit_ext_info_t*      info)                                              \
+ rt_hit_ext_info_t*      info,                                              \
+ enum rt_face_cull_mode  face_cull_mode)                                    \
 {                                                                           \
     RT_ASSERT(world     != NULL);                                           \
     RT_ASSERT(nearest_z <= farthest_z);                                     \
     RT_ASSERT(info      != NULL);                                           \
                                                                             \
-    enum rt_face_cull_mode cull_mode = world->face_cull_mode;               \
+    enum rt_face_cull_mode cull_mode = face_cull_mode;                      \
                                                                             \
     if (RT_FACE_cull_both == cull_mode) {                                   \
                                                                             \
@@ -1887,11 +1904,12 @@ RT_WORLD_DEF_CLOSEST_HIT(plane)
 RT_WORLD_DEF_CLOSEST_HIT(aabb)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
-                                     rt_ray_t              ray,
-                                     rt_float_t            nearest_z,
-                                     rt_float_t            farthest_z,
-                                     rt_hit_ext_info_t*    info)
+RT_API bool rt_world_any_closest_hit(const rt_world_t*          world,
+                                     rt_ray_t                   ray,
+                                     rt_float_t                 nearest_z,
+                                     rt_float_t                 farthest_z,
+                                     rt_hit_ext_info_t*         info,
+                                     enum rt_face_cull_mode     face_cull_mode)
 {
     bool is_hit_bool_array[RT_HIT_count]            = {};
     rt_hit_ext_info_t hit_info_array[RT_HIT_count]  = {};
@@ -1902,19 +1920,22 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*     world,
                                                                    ray,
                                                                    nearest_z,
                                                                    farthest_z,
-                                                                   &hit_info_array[RT_HIT_sphere]);
+                                                                   &hit_info_array[RT_HIT_sphere],
+                                                                   face_cull_mode);
 
     is_hit_bool_array[RT_HIT_plane] = rt_world_plane_closest_hit(world,
                                                                  ray,
                                                                  nearest_z,
                                                                  farthest_z,
-                                                                 &hit_info_array[RT_HIT_plane]);
+                                                                 &hit_info_array[RT_HIT_plane],
+                                                                 face_cull_mode);
 
     is_hit_bool_array[RT_HIT_aabb] = rt_world_aabb_closest_hit(world,
                                                                ray,
                                                                nearest_z,
                                                                farthest_z,
-                                                               &hit_info_array[RT_HIT_aabb]);
+                                                               &hit_info_array[RT_HIT_aabb],
+                                                               face_cull_mode);
 
     rt_idx_t hit_idx        = -1;
     rt_float_t closest_z    = RT_FLOAT(0.0);
@@ -2421,7 +2442,7 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
 
         rt_ray_t new_ray = {
 
-            .org = rt_vec4_add(hit_info->info.position,
+            .org = rt_vec4_sub(hit_info->info.position,
                                rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS)),
 
             .dir = rt_vec4_norm(rt_vec4_negate(light->direction)),
@@ -2432,7 +2453,8 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
                                      new_ray,
                                      nearest_z,
                                      farthest_z,
-                                     hit_info)) {
+                                     hit_info,
+                                     RT_FACE_cull_null)) {
 
             bool should_be_in_shadow = rt_should_be_in_shadow(world,
                                                               hit_info);
@@ -2459,7 +2481,7 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
             continue;
         }
 
-        rt_vec4_t org = rt_vec4_add(hit_info->info.position,
+        rt_vec4_t org = rt_vec4_sub(hit_info->info.position,
                                     rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS));
 
         rt_ray_t new_ray = {
@@ -2474,7 +2496,8 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
                                      new_ray,
                                      new_nearest_z,
                                      new_farthest_z,
-                                     hit_info)) {
+                                     hit_info,
+                                     RT_FACE_cull_null)) {
 
             bool should_be_in_shadow = rt_should_be_in_shadow(world,
                                                               hit_info);
@@ -2558,7 +2581,8 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                   ray,
                                   nearest_z,
                                   farthest_z,
-                                  &hit_info)) {
+                                  &hit_info,
+                                  world->face_cull_mode)) {
 
         return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
                                 world->clear_color);
@@ -2657,7 +2681,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
             rt_vec4_t reflected_ray_dir = rt_vec4_reflect(ray.dir,
                                                           hit_info.info.normal);
 
-            rt_vec4_t reflected_ray_pos = rt_vec4_add(hit_info.info.position,
+            rt_vec4_t reflected_ray_pos = rt_vec4_sub(hit_info.info.position,
                                                       rt_vec4_mul_scalar(hit_info.info.normal,
                                                                          RT_SHADOW_BIAS));
 
@@ -2864,7 +2888,7 @@ RT_API rt_fps_camera_t rt_fps_camera_create()
 
         .exposure               = RT_FLOAT(1.0),
         .exposure_new           = RT_FLOAT(1.0),
-        .exposure_smoothing     = RT_FLOAT(0.5),
+        .exposure_smoothing     = RT_FLOAT(1.0),
         .auto_exposure          = true,
     };
 
