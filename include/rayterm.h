@@ -74,7 +74,6 @@ typedef int32_t rt_idx_t;
 ////////////////////////////// CONSTANTS //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #define RT_GAMMA                        RT_FLOAT(2.2)
-#define RT_GAMMA_INVERSE                RT_FLOAT(0.454545)
 #define RT_PI                           RT_FLOAT(3.1415926)
 #define RT_EPSILON                      RT_FLOAT(0.000001)
 #define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
@@ -221,15 +220,18 @@ RT_API void rt_set_error_callback(rt_error_callback_t   callback,
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_float_t rt_apply_inverse_gamma(rt_float_t x)
-{
-    return pow(x, RT_GAMMA_INVERSE);
-}
-
-///////////////////////////////////////////////////////////////////////////
 RT_API rt_float_t rt_apply_gamma(rt_float_t x)
 {
     return pow(x, RT_GAMMA);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_apply_inverse_gamma(rt_float_t x)
+{
+    if (x > RT_FLOAT(0.0)) {
+        return pow(x, RT_FLOAT(1.0) / x);
+    }
+    return x;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -237,6 +239,16 @@ RT_API rt_float_t rt_apply_gamma_custom(rt_float_t x,
                                         rt_float_t gamma)
 {
     return pow(x, gamma);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_apply_inverse_gamma_custom(rt_float_t x,
+                                                rt_float_t gamma)
+{
+    if (x > RT_FLOAT(0.0)) {
+        return pow(x, RT_FLOAT(1.0) / gamma);
+    }
+    return x;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -3196,8 +3208,8 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
                                                         RT_FLOAT(1.0)}, tonemapped_color);
 
             rt_vec4_t gamma_correct_color = rt_vec4_apply_2(tonemapped_color,
-                                                            rt_apply_gamma_custom,
-                                                            RT_GAMMA_INVERSE);
+                                                            rt_apply_inverse_gamma_custom,
+                                                            RT_GAMMA);
 
             rt_framebuffer_write(row,
                                  col,
