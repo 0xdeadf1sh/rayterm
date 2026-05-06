@@ -555,6 +555,42 @@ RT_API uint32_t rt_vec4_to_uint32_alpha(rt_vec4_t   p,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_uint32_to_vec4(uint32_t p)
+{
+    uint8_t x = (uint8_t)(p >> 0);
+    uint8_t y = (uint8_t)(p >> 8);
+    uint8_t z = (uint8_t)(p >> 16);
+    uint8_t w = (uint8_t)(p >> 24);
+
+    rt_vec4_t r = {
+        .x = (rt_float_t)x / RT_FLOAT(255.99),
+        .y = (rt_float_t)y / RT_FLOAT(255.99),
+        .z = (rt_float_t)z / RT_FLOAT(255.99),
+        .w = (rt_float_t)w / RT_FLOAT(255.99),
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_uint32_to_vec4_alpha(uint32_t   p,
+                                         rt_float_t alpha)
+{
+    uint8_t x = (uint8_t)(p >> 0);
+    uint8_t y = (uint8_t)(p >> 8);
+    uint8_t z = (uint8_t)(p >> 16);
+
+    rt_vec4_t r = {
+        .x = (rt_float_t)x / RT_FLOAT(255.99),
+        .y = (rt_float_t)y / RT_FLOAT(255.99),
+        .z = (rt_float_t)z / RT_FLOAT(255.99),
+        .w = alpha,
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_vec4_apply_0(rt_vec4_t  p,
                                  rt_float_t (*fun)(void))
 {
@@ -2812,6 +2848,313 @@ RT_API void rt_framebuffer_free(rt_framebuffer_t*       framebuffer)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+/////////////////////////// NOTCURSES SURFACE /////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#ifdef RT_USE_NOTCURSES
+
+#include <notcurses/notcurses.h>
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    struct ncplane*             render_surface;
+    struct ncvisual_options     visual_options;
+
+    uint32_t                    rows;
+    uint32_t                    cols;
+
+    ncblitter_e                 blitter;
+}
+rt_notcurses_surface_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
+                                         uint32_t*      row_multiplier,
+                                         uint32_t*      col_multiplier)
+{
+    RT_ASSERT(row_multiplier != NULL);
+    RT_ASSERT(col_multiplier != NULL);
+
+    switch (blitter) {
+        case NCBLIT_1x1:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
+            break;
+        case NCBLIT_2x1:
+            *row_multiplier = 2;
+            *col_multiplier = 1;
+            break;
+        case NCBLIT_2x2:
+            *row_multiplier = 2;
+            *col_multiplier = 2;
+            break;
+        case NCBLIT_3x2:
+            *row_multiplier = 3;
+            *col_multiplier = 2;
+            break;
+        default:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
+            break;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane* ncplane,
+                                                          ncblitter_e blitter)
+{
+    RT_ASSERT(ncplane != NULL);
+
+    rt_notcurses_surface_t surface = {};
+    surface.render_surface = ncplane;
+
+    ncplane_dim_yx(ncplane, &surface.rows, &surface.cols);
+
+    uint32_t row_multiplier = 1;
+    uint32_t col_multiplier = 1;
+    rt_compute_row_col_multipler(blitter,
+                                 &row_multiplier,
+                                 &col_multiplier);
+
+    surface.rows                    *= row_multiplier;
+    surface.cols                    *= col_multiplier;
+
+    surface.blitter                  = blitter;
+
+    surface.visual_options.n         = ncplane;
+    surface.visual_options.blitter   = blitter;
+    surface.visual_options.leny      = surface.rows;
+    surface.visual_options.lenx      = surface.cols;
+    surface.visual_options.scaling   = NCSCALE_NONE;
+    surface.visual_options.flags     = NCVISUAL_OPTION_NODEGRADE;
+
+    return surface;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
+                                        rt_framebuffer_t*           framebuffer)
+{
+    RT_ASSERT(surface      != NULL);
+    RT_ASSERT(framebuffer  != NULL);
+
+    uint32_t new_rows = 0;
+    uint32_t new_cols = 0;
+
+    ncplane_dim_yx(surface->render_surface, &new_rows, &new_cols);
+
+    uint32_t row_multiplier = 1;
+    uint32_t col_multiplier = 1;
+    rt_compute_row_col_multipler(surface->blitter,
+                                 &row_multiplier,
+                                 &col_multiplier);
+
+    new_rows *= row_multiplier;
+    new_cols *= col_multiplier;
+
+    if (new_rows != surface->rows || new_cols != surface->cols) {
+
+        RT_ASSERT(RT_STATUS_success == rt_framebuffer_resize(new_cols,
+                                                             new_rows,
+                                                             framebuffer));
+
+        surface->visual_options.leny = new_rows;
+        surface->visual_options.lenx = new_cols;
+
+        surface->rows = new_rows;
+        surface->cols = new_cols;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surface,
+                                                rt_framebuffer_t*           framebuffer,
+                                                ncblitter_e                 blitter)
+{
+    RT_ASSERT(surface       != NULL);
+    RT_ASSERT(framebuffer   != NULL);
+
+    if (surface->blitter != blitter) {
+
+        // kind of an awkward API
+        surface->blitter                    = blitter;
+        surface->visual_options.blitter     = blitter;
+    }
+
+    rt_notcurses_surface_resize(surface, framebuffer);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit_ascii_colored
+(
+    const rt_notcurses_surface_t*   surface,
+    const rt_framebuffer_t*         framebuffer,
+    const char*                     ascii_characters,
+    uint32_t                        ascii_characters_len
+)
+{
+    uint32_t width = framebuffer->width;
+    uint32_t height = framebuffer->height;
+
+    for (uint32_t i = 0; i < width; ++i) {
+        for (uint32_t j = 0; j < height; ++j) {
+
+            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+
+            uint32_t red    = (uint32_t)(uint8_t)(pixel >> 0);
+            uint32_t green  = (uint32_t)(uint8_t)(pixel >> 8);
+            uint32_t blue   = (uint32_t)(uint8_t)(pixel >> 16);
+
+            rt_float_t r = (rt_float_t)red      / RT_FLOAT(255.99);
+            rt_float_t g = (rt_float_t)green    / RT_FLOAT(255.99);
+            rt_float_t b = (rt_float_t)blue     / RT_FLOAT(255.99);
+
+            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+
+            struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
+            nccell_load_char(surface->render_surface,
+                             &c,
+                             ascii_characters[ind]);
+
+            nccell_set_fg_rgb8(&c, red, green, blue);
+            ncplane_putc_yx(surface->render_surface,
+                            (int32_t)j,
+                            (int32_t)i,
+                            &c);
+
+            nccell_release(surface->render_surface, &c);
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit_ascii_monochrome
+(
+    const rt_notcurses_surface_t*    surface,
+    const rt_framebuffer_t*          framebuffer,
+    const char*                      ascii_characters,
+    uint32_t                         ascii_characters_len
+)
+{
+    uint32_t width = framebuffer->width;
+    uint32_t height = framebuffer->height;
+
+    for (uint32_t i = 0; i < width; ++i) {
+        for (uint32_t j = 0; j < height; ++j) {
+
+            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+
+            rt_float_t r = (rt_float_t)((uint8_t)(pixel >> 0))  / RT_FLOAT(255.99);
+            rt_float_t g = (rt_float_t)((uint8_t)(pixel >> 8))  / RT_FLOAT(255.99);
+            rt_float_t b = (rt_float_t)((uint8_t)(pixel >> 16)) / RT_FLOAT(255.99);
+
+            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind = (uint32_t)(avg * (rt_float_t)(ascii_characters_len));
+
+            ncplane_putchar_yx(surface->render_surface,
+                              (int32_t)j,
+                              (int32_t)i,
+                              ascii_characters[ind]);
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit_ascii_matrix
+(
+    const rt_notcurses_surface_t*    surface,
+    const rt_framebuffer_t*          framebuffer,
+    const char*                      ascii_characters,
+    uint32_t                         ascii_characters_len
+)
+{
+    uint32_t width = framebuffer->width;
+    uint32_t height = framebuffer->height;
+
+    for (uint32_t i = 0; i < width; ++i) {
+        for (uint32_t j = 0; j < height; ++j) {
+
+            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+
+            uint32_t red    = (uint32_t)(uint8_t)(pixel >> 0);
+            uint32_t green  = (uint32_t)(uint8_t)(pixel >> 8);
+            uint32_t blue   = (uint32_t)(uint8_t)(pixel >> 16);
+
+            rt_float_t r = (rt_float_t)red      / RT_FLOAT(255.99);
+            rt_float_t g = (rt_float_t)green    / RT_FLOAT(255.99);
+            rt_float_t b = (rt_float_t)blue     / RT_FLOAT(255.99);
+
+            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+
+            struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
+            nccell_load_char(surface->render_surface,
+                             &c,
+                             ascii_characters[ind]);
+
+            uint32_t avg_green = (uint32_t)(avg * RT_FLOAT(255.99));
+
+            nccell_set_fg_rgb8(&c, 0x00, avg_green, 0x00);
+            ncplane_putc_yx(surface->render_surface,
+                            (int32_t)j,
+                            (int32_t)i,
+                            &c);
+
+            nccell_release(surface->render_surface, &c);
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
+                                      const rt_framebuffer_t*       framebuffer)
+{
+    RT_ASSERT(surface      != NULL);
+    RT_ASSERT(framebuffer  != NULL);
+
+    static char ascii_characters[] = " .,-~:;=!*#$@";
+    uint32_t ascii_characters_len = sizeof(ascii_characters) - 1;
+
+    switch (surface->blitter) {
+        case NCBLIT_1x1:
+        case NCBLIT_2x1:
+        case NCBLIT_2x2:
+        case NCBLIT_3x2:
+            RT_ASSERT(-1 != ncblit_rgba(framebuffer->rgb_buffer,
+                                        (int32_t)(surface->cols * sizeof(uint32_t)),
+                                        &surface->visual_options));
+            break;
+        case NCBLIT_4x1: {
+            rt_notcurses_surface_blit_ascii_colored(surface,
+                                                   framebuffer,
+                                                   ascii_characters,
+                                                   ascii_characters_len);
+            break;
+        }
+        case NCBLIT_4x2: {
+            rt_notcurses_surface_blit_ascii_monochrome(surface,
+                                                       framebuffer,
+                                                       ascii_characters,
+                                                       ascii_characters_len);
+            break;
+        }
+        case NCBLIT_8x1: {
+            rt_notcurses_surface_blit_ascii_matrix(surface,
+                                                   framebuffer,
+                                                   ascii_characters,
+                                                   ascii_characters_len);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+#endif
+
+///////////////////////////////////////////////////////////////////////////
 //////////////////////////////// FPS CAMERA ///////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -3050,11 +3393,36 @@ RT_API void rt_fps_camera_stop_moving_down(rt_fps_camera_t* camera)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
-                                 const rt_world_t*      world,
-                                 rt_framebuffer_t*      framebuffer,
-                                 rt_float_t             delta_time)
+typedef struct
 {
+    rt_fps_camera_t*    camera;
+    const rt_world_t*   world;
+    rt_framebuffer_t*   framebuffer;
+    rt_float_t          delta_time;
+
+#ifdef RT_USE_NOTCURSES
+    const rt_notcurses_surface_t* surface;
+#endif
+}
+rt_fps_camera_render_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_render(rt_fps_camera_render_params_t* params)
+{
+    RT_ASSERT(params            != NULL);
+
+    rt_fps_camera_t* camera     = params->camera;
+    const rt_world_t* world     = params->world;
+    rt_framebuffer_t* framebuffer= params->framebuffer;
+    rt_float_t delta_time       = params->delta_time;
+
+#ifdef RT_USE_NOTCURSES
+
+    const rt_notcurses_surface_t* surface = params->surface;
+    RT_ASSERT(surface           != NULL);
+
+#endif
+
     RT_ASSERT(camera            != NULL);
     RT_ASSERT(world             != NULL);
     RT_ASSERT(framebuffer       != NULL);
@@ -3062,7 +3430,24 @@ RT_API void rt_fps_camera_render(rt_fps_camera_t*       camera,
     uint32_t cols               = framebuffer->width;
     uint32_t rows               = framebuffer->height;
 
-    rt_float_t aspect           = (rt_float_t)cols / (rt_float_t)(rows * 2);
+#ifdef RT_USE_NOTCURSES
+
+    uint32_t row_multiplier     = 1;
+    uint32_t col_multiplier     = 1;
+
+    rt_compute_row_col_multipler(surface->blitter,
+                                 &row_multiplier,
+                                 &col_multiplier);
+
+    rt_float_t aspect           = (rt_float_t)(cols * 1 * row_multiplier) /
+                                  (rt_float_t)(rows * 2 * col_multiplier);
+
+#else
+
+    rt_float_t aspect           = (rt_float_t)(cols) / (rt_float_t)(rows);
+
+#endif
+
 
     rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
                                     RT_FLOAT(0.0),
@@ -3506,12 +3891,49 @@ RT_API void rt_sdl3_retrieve_gamepad(rt_sdl3_gamepad_info_t* gamepad_info)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*                                 camera,
-                                                    const rt_fps_camera_sdl3_joystick_keybindings_t* keybindings,
-                                                    rt_sdl3_gamepad_info_t*                          gamepad_info,
-                                                    rt_float_t                                       delta_time,
-                                                    bool*                                            is_running)
+typedef struct
 {
+    void (*event_quit)                  (void* userPtr);
+    void (*event_gamepad_added)         (rt_sdl3_gamepad_info_t* gamepad_info,
+                                         void* userPtr);
+    void (*event_gamepad_removed)       (void* userPtr);
+    void (*event_gamepad_button_down)   (int32_t button, void* userPtr);
+    void (*event_gamepad_button_up)     (int32_t button, void* userPtr);
+    void (*event_gamepad_axis_motion)   (int32_t left_x,
+                                         int32_t left_y,
+                                         int32_t right_x,
+                                         int32_t right_y,
+                                         void* userPtr);
+
+    void* userPtr;
+}
+rt_fps_camera_update_with_sdl3_joystick_callbacks_t;
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_fps_camera_t*                                    camera;
+    const rt_fps_camera_sdl3_joystick_keybindings_t*    keybindings;
+    rt_sdl3_gamepad_info_t*                             gamepad_info;
+    rt_float_t                                          delta_time;
+    bool*                                               is_running;
+}
+rt_fps_camera_update_with_sdl3_joystick_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_update_with_sdl3_joystick(
+        const rt_fps_camera_update_with_sdl3_joystick_params_t*     params,
+        rt_fps_camera_update_with_sdl3_joystick_callbacks_t         callbacks
+)
+{
+    RT_ASSERT(params        != NULL);
+
+    rt_fps_camera_t* camera                                         = params->camera;
+    const rt_fps_camera_sdl3_joystick_keybindings_t* keybindings    = params->keybindings;
+    rt_sdl3_gamepad_info_t* gamepad_info                            = params->gamepad_info;
+    rt_float_t delta_time                                           = params->delta_time;
+    bool* is_running                                                = params->is_running;
+
     RT_ASSERT(camera        != NULL);
     RT_ASSERT(keybindings   != NULL);
     RT_ASSERT(gamepad_info  != NULL);
@@ -3531,12 +3953,20 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*            
 
                 *is_running = false;
 
+                if (callbacks.event_quit) {
+                    callbacks.event_quit(callbacks.userPtr);
+                }
+
                 break;
             }
             case SDL_EVENT_GAMEPAD_ADDED: {
 
                 if (!gamepad) {
                     rt_sdl3_retrieve_gamepad(gamepad_info)  ;
+
+                    if (callbacks.event_gamepad_added) {
+                        callbacks.event_gamepad_added(gamepad_info, callbacks.userPtr);
+                    }
                 }
 
                 break; 
@@ -3546,6 +3976,10 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*            
                 if (gamepad) {
                     SDL_CloseGamepad(gamepad);
                     gamepad_info->gamepad = NULL;
+
+                    if (callbacks.event_gamepad_removed) {
+                        callbacks.event_gamepad_removed(callbacks.userPtr);
+                    }
                 }
 
                 break;
@@ -3564,8 +3998,13 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*            
                 else if (event.gbutton.button == keybindings->down_button) {
 
                     camera->velocity_new_y = rt_vec4_mul_scalar(camera->y_axis,
-                                                                -camera->movement_speed * delta_time);
+                                                               -camera->movement_speed * delta_time);
 
+                }
+
+                if (callbacks.event_gamepad_button_down) {
+                    callbacks.event_gamepad_button_down(event.gbutton.button,
+                                                        callbacks.userPtr);
                 }
 
                 break;
@@ -3577,6 +4016,11 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*            
                 }
                 else if (event.gbutton.button == keybindings->down_button) {
                     camera->velocity_new_y = (rt_vec4_t){};
+                }
+
+                if (callbacks.event_gamepad_button_up) {
+                    callbacks.event_gamepad_button_up(event.gbutton.button,
+                                                      callbacks.userPtr);
                 }
 
                 break;
@@ -3635,107 +4079,21 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick(rt_fps_camera_t*            
                 else {
                     camera->velocity_new_x = (rt_vec4_t){};
                 }
+
+                if (callbacks.event_gamepad_axis_motion) {
+                    callbacks.event_gamepad_axis_motion(leftX,
+                                                        leftY,
+                                                        rightX,
+                                                        rightY,
+                                                        callbacks.userPtr);
+                }
+
                 break;
             }
             default:
                 break;
         }
     }
-}
-
-#endif
-
-///////////////////////////////////////////////////////////////////////////
-/////////////////////////// NOTCURSES SURFACE /////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-#ifdef RT_USE_NOTCURSES
-
-#include <notcurses/notcurses.h>
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct
-{
-    struct ncplane*             render_surface;
-    struct ncvisual_options     visual_options;
-
-    uint32_t                    rows;
-    uint32_t                    cols;
-
-    ncblitter_e                 blitter;
-}
-rt_notcurses_surface_t;
-
-///////////////////////////////////////////////////////////////////////////
-RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane* ncplane)
-{
-    RT_ASSERT(ncplane != NULL);
-
-    rt_notcurses_surface_t surface = {};
-
-    surface.render_surface = ncplane;
-
-    surface.rows = 0;
-    surface.cols = 0;
-
-    ncplane_dim_yx(ncplane, &surface.rows, &surface.cols);
-
-    surface.rows *= 2;
-    surface.cols *= 2;
-
-    surface.visual_options.n         = ncplane;
-    surface.visual_options.leny      = surface.rows;
-    surface.visual_options.lenx      = surface.cols;
-    surface.visual_options.blitter   = NCBLIT_2x2;
-    surface.visual_options.scaling   = NCSCALE_NONE;
-    surface.visual_options.flags     = NCVISUAL_OPTION_NODEGRADE;
-
-    return surface;
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
-                                        rt_framebuffer_t*           framebuffer)
-{
-    RT_ASSERT(surface      != NULL);
-    RT_ASSERT(framebuffer  != NULL);
-
-    uint32_t new_rows = 0;
-    uint32_t new_cols = 0;
-
-    ncplane_dim_yx(surface->render_surface, &new_rows, &new_cols);
-
-    new_rows *= 2;
-    new_cols *= 2;
-
-    if (new_rows != surface->rows || new_cols != surface->cols) {
-
-        RT_ASSERT(RT_STATUS_success == rt_framebuffer_resize(new_cols,
-                                                             new_rows,
-                                                             framebuffer));
-
-        surface->visual_options.leny = new_rows;
-        surface->visual_options.lenx = new_cols;
-
-        surface->rows = new_rows;
-        surface->cols = new_cols;
-
-        return true;
-    }
-
-    return false;
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
-                                      const rt_framebuffer_t*       framebuffer)
-{
-    RT_ASSERT(surface      != NULL);
-    RT_ASSERT(framebuffer  != NULL);
-
-    RT_ASSERT(-1 != ncblit_rgba(framebuffer->rgb_buffer,
-                                (int32_t)(surface->cols * sizeof(uint32_t)),
-                                &surface->visual_options));
 }
 
 #endif

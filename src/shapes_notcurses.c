@@ -16,6 +16,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+#include <SDL3/SDL_gamepad.h>
+#include <notcurses/notcurses.h>
 #define RT_USE_NOTCURSES
 #define RT_USE_SDL3
 #include "rayterm.h"
@@ -42,6 +44,7 @@ typedef struct
     rt_framebuffer_t        framebuffer;
     rt_world_t              world;
     rt_sdl3_gamepad_info_t  gamepad_info;
+    ncblitter_e             current_blitter;
 }
 app_state_t;
 
@@ -63,6 +66,73 @@ static void app_destroy(app_state_t* state)
     }
 
     SDL_Quit();
+}
+
+///////////////////////////////////////////////////////////////////////////
+static void gamepad_down_callback(int32_t button, void* userPtr)
+{
+    app_state_t* app = (app_state_t*)userPtr;
+    ncblitter_e blitter = app->current_blitter;
+
+    if (button == SDL_GAMEPAD_BUTTON_EAST) {
+
+        switch (blitter) {
+            case NCBLIT_1x1:
+                blitter = NCBLIT_2x1;
+                break;
+            case NCBLIT_2x1:
+                blitter = NCBLIT_2x2;
+                break;
+            case NCBLIT_2x2:
+                blitter = NCBLIT_3x2;
+                break;
+            case NCBLIT_3x2:
+                blitter = NCBLIT_4x1;
+                break;
+            case NCBLIT_4x1:
+                blitter = NCBLIT_4x2;
+                break;
+            case NCBLIT_4x2:
+                blitter = NCBLIT_8x1;
+                break;
+            case NCBLIT_8x1:
+                blitter = NCBLIT_1x1;
+                break;
+            default:
+                break;
+        }
+    }
+    else if (button == SDL_GAMEPAD_BUTTON_WEST) {
+
+        switch (blitter) {
+            case NCBLIT_1x1:
+                blitter = NCBLIT_8x1;
+                break;
+            case NCBLIT_8x1:
+                blitter = NCBLIT_4x2;
+                break;
+            case NCBLIT_4x2:
+                blitter = NCBLIT_4x1;
+                break;
+            case NCBLIT_4x1:
+                blitter = NCBLIT_3x2;
+                break;
+            case NCBLIT_3x2:
+                blitter = NCBLIT_2x2;
+                break;
+            case NCBLIT_2x2:
+                blitter = NCBLIT_2x1;
+                break;
+            case NCBLIT_2x1:
+                blitter = NCBLIT_1x1;
+                break;
+            default:
+                break;
+        }
+
+    }
+
+    app->current_blitter = blitter;
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -111,7 +181,9 @@ int main(void)
     struct ncplane* std = notcurses_stdplane(app.nc);
     RT_ASSERT(std != NULL);
 
-    rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std);
+    app.current_blitter = NCBLIT_1x1;
+    rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std,
+                                                                           app.current_blitter);
 
     RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(notcurses_surface.cols,
                                                          notcurses_surface.rows,
@@ -305,6 +377,10 @@ int main(void)
     rt_fps_camera_notcurses_keybindings_t keyboard_bindings     = rt_fps_camera_notcurses_default_keybindings();
     rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
 
+    rt_fps_camera_update_with_sdl3_joystick_callbacks_t callbacks = {};
+    callbacks.userPtr = &app;
+    callbacks.event_gamepad_button_down = gamepad_down_callback;
+
 
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// RENDER LOOP ///////////////////////////////
@@ -316,10 +392,8 @@ int main(void)
 
     while (is_running) {
 
-        if (rt_notcurses_surface_resize(&notcurses_surface,
-                                        &app.framebuffer)) {
-            continue;
-        }
+        rt_notcurses_surface_resize(&notcurses_surface,
+                                    &app.framebuffer);
 
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
         total_time += delta_time;
@@ -359,11 +433,16 @@ int main(void)
                                              diffuse_sphere_material_index,
                                              &diffuse_mat_params);
 
-        rt_fps_camera_update_with_sdl3_joystick(&fps_camera,
-                                                &joystick_bindings,
-                                                &app.gamepad_info,
-                                                delta_time,
-                                                &is_running);
+        rt_fps_camera_update_with_sdl3_joystick_params_t params = {
+            .camera         = &fps_camera,
+            .keybindings    = &joystick_bindings,
+            .gamepad_info   = &app.gamepad_info,
+            .delta_time     = delta_time,
+            .is_running     = &is_running,
+        };
+
+        rt_fps_camera_update_with_sdl3_joystick(&params,
+                                                callbacks);
 
         if (!app.gamepad_info.gamepad) {
 
@@ -375,10 +454,19 @@ int main(void)
 
         }
 
-        rt_fps_camera_render(&fps_camera,
-                             &app.world,
-                             &app.framebuffer,
-                             delta_time);
+        rt_notcurses_surface_change_blitter(&notcurses_surface,
+                                            &app.framebuffer,
+                                            app.current_blitter);
+
+        rt_fps_camera_render_params_t camera_render_params = {
+            .camera         = &fps_camera,
+            .world          = &app.world,
+            .framebuffer    = &app.framebuffer,
+            .delta_time     = delta_time,
+            .surface        = &notcurses_surface,
+        };
+
+        rt_fps_camera_render(&camera_render_params);
 
         rt_notcurses_surface_blit(&notcurses_surface,
                                   &app.framebuffer);
