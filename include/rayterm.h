@@ -286,8 +286,6 @@ rt_timer_t;
 typedef void (*rt_timer_callback_t)(rt_timer_t*     timer,
                                     void*           user_param);
 
-// #undef RT_USE_SDL3
-
 ///////////////////////////////////////////////////////////////////////////
 #ifdef RT_USE_SDL3
 #include <SDL3/SDL.h>
@@ -369,6 +367,742 @@ RT_API void rt_timer_wait(rt_timer_t*   timer,
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MATH ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_float_t x, y;
+}
+rt_vec2_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_add(rt_vec2_t p,
+                             rt_vec2_t q)
+{
+    p.x += q.x;
+    p.y += q.y;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_add_scalar(rt_vec2_t   p,
+                                    rt_float_t  k)
+{
+    p.x += k;
+    p.y += k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_sub(rt_vec2_t p,
+                             rt_vec2_t q)
+{
+    p.x -= q.x;
+    p.y -= q.y;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_sub_scalar(rt_vec2_t   p,
+                                    rt_float_t  k)
+{
+    p.x -= k;
+    p.y -= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_mul(rt_vec2_t p,
+                             rt_vec2_t q)
+{
+    p.x *= q.x;
+    p.y *= q.y;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_mul_scalar(rt_vec2_t   p,
+                                    rt_float_t  k)
+{
+    p.x *= k;
+    p.y *= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_div(rt_vec2_t p,
+                             rt_vec2_t q)
+{
+    p.x /= q.x;
+    p.y /= q.y;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_div_scalar(rt_vec2_t   p,
+                                    rt_float_t  k)
+{
+    p.x /= k;
+    p.x /= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_negate(rt_vec2_t p)
+{
+    p.x = -p.x;
+    p.y = -p.y;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec2_len(rt_vec2_t p)
+{
+    return sqrt(p.x * p.x + p.y * p.y);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec2_sqrlen(rt_vec2_t p)
+{
+    return p.x * p.x + p.y * p.y;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec2_dot(rt_vec2_t p,
+                              rt_vec2_t q)
+{
+    return p.x * q.x + p.y * q.y;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_norm(rt_vec2_t p)
+{
+    rt_float_t k = p.x * p.x + p.y * p.y;
+
+    if (k > RT_FLOAT(0.0)) {
+
+        k = RT_FLOAT(1.0) / sqrt(k);
+
+        p.x *= k;
+        p.y *= k;
+    }
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API uint32_t rt_vec2_to_uint32(rt_vec2_t p)
+{
+    uint32_t x = (uint32_t)(p.x * RT_FLOAT(255.99));
+    uint32_t y = (uint32_t)(p.y * RT_FLOAT(255.99));
+
+    return (y << 8) | (x << 0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API uint16_t rt_vec2_to_uint16(rt_vec2_t p)
+{
+    uint32_t x = (uint32_t)(p.x * RT_FLOAT(255.99));
+    uint32_t y = (uint32_t)(p.y * RT_FLOAT(255.99));
+
+    return (uint16_t)((y << 8) | (x << 0));
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_uint16_to_vec2(uint16_t p)
+{
+    uint8_t x = (uint8_t)(p >> 0);
+    uint8_t y = (uint8_t)(p >> 8);
+
+    rt_vec2_t r = {
+        .x = (rt_float_t)x / RT_FLOAT(255.99),
+        .y = (rt_float_t)y / RT_FLOAT(255.99),
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_uint32_to_vec2(uint32_t p)
+{
+    uint8_t x = (uint8_t)(p >> 0);
+    uint8_t y = (uint8_t)(p >> 8);
+
+    rt_vec2_t r = {
+        .x = (rt_float_t)x / RT_FLOAT(255.99),
+        .y = (rt_float_t)y / RT_FLOAT(255.99),
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_apply_0(rt_vec2_t  p,
+                                 rt_float_t (*fun)(void))
+{
+    p.x = fun();
+    p.y = fun();
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_apply_1(rt_vec2_t  p,
+                                 rt_float_t (*fun)(rt_float_t))
+{
+    p.x = fun(p.x);
+    p.y = fun(p.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_apply_2(rt_vec2_t  p,
+                                 rt_float_t (*fun)(rt_float_t, rt_float_t),
+                                 rt_float_t k)
+{
+    p.x = fun(p.x, k);
+    p.y = fun(p.y, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_lerp(rt_vec2_t     p,
+                              rt_vec2_t     q,
+                              rt_float_t    k)
+{
+    p.x += k * (q.x - p.x);
+    p.y += k * (q.y - p.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_rand(uint32_t seed)
+{
+    srand(seed);
+    rt_vec2_t p = {
+        .x = (rt_float_t)(rand() % RAND_MAX),
+        .y = (rt_float_t)(rand() % RAND_MAX),
+    };
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_max(rt_vec2_t  p,
+                             rt_float_t k)
+{
+    p.x = fmax(p.x, k);
+    p.y = fmax(p.y, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_min(rt_vec2_t  p,
+                             rt_float_t k)
+{
+    p.x = fmin(p.x, k);
+    p.y = fmin(p.y, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_max_vec2(rt_vec2_t p,
+                                  rt_vec2_t q)
+{
+    p.x = fmax(p.x, q.x);
+    p.y = fmax(p.y, q.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_min_vec2(rt_vec2_t p,
+                                  rt_vec2_t q)
+{
+    p.x = fmin(p.x, q.x);
+    p.y = fmin(p.y, q.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_clamp(rt_vec2_t    p,
+                               rt_vec2_t    range)
+{
+    p.x = rt_clamp(p.x, range.x, range.y);
+    p.y = rt_clamp(p.y, range.x, range.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_reflect(rt_vec2_t p,
+                                 rt_vec2_t n)
+{
+    n               = rt_vec2_norm(n);
+    rt_float_t d    = RT_FLOAT(2.0) * rt_vec2_dot(p, n);
+
+    p.x -= n.x * d;
+    p.y -= n.y * d;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec2_t rt_vec2_refract(rt_vec2_t  p,
+                                 rt_vec2_t  n,
+                                 rt_float_t k)
+{
+    rt_vec2_t pnegated      = rt_vec2_negate(p);
+    rt_float_t cos_theta    = fmin(RT_FLOAT(1.0), rt_vec2_dot(pnegated, n));
+    rt_vec2_t perpendicular = rt_vec2_mul_scalar(rt_vec2_add(p,
+                                                             rt_vec2_mul_scalar(n,
+                                                                                cos_theta)),
+                                                             k);
+    rt_float_t a            = -sqrt(fabs(RT_FLOAT(1.0) - rt_vec2_sqrlen(perpendicular)));
+    rt_vec2_t parallel      = rt_vec2_mul_scalar(n, a);
+    return rt_vec2_add(perpendicular, parallel);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec2_dist(rt_vec2_t p,
+                               rt_vec2_t q)
+{
+    rt_float_t x = p.x - q.x;
+    rt_float_t y = p.y - q.y;
+
+    return sqrt(x * x + y * y);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec2_sqrdist(rt_vec2_t p,
+                                  rt_vec2_t q)
+{
+    rt_float_t x = p.x - q.x;
+    rt_float_t y = p.y - q.y;
+
+    return x * x + y * y;
+}
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    rt_float_t x, y, z;
+}
+rt_vec3_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_add(rt_vec3_t p,
+                             rt_vec3_t q)
+{
+    p.x += q.x;
+    p.y += q.y;
+    p.z += q.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_add_scalar(rt_vec3_t   p,
+                                    rt_float_t  k)
+{
+    p.x += k;
+    p.y += k;
+    p.z += k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_sub(rt_vec3_t p,
+                             rt_vec3_t q)
+{
+    p.x -= q.x;
+    p.y -= q.y;
+    p.z -= q.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_sub_scalar(rt_vec3_t   p,
+                                    rt_float_t  k)
+{
+    p.x -= k;
+    p.y -= k;
+    p.z -= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_mul(rt_vec3_t p,
+                             rt_vec3_t q)
+{
+    p.x *= q.x;
+    p.y *= q.y;
+    p.z *= q.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_mul_scalar(rt_vec3_t   p,
+                                    rt_float_t  k)
+{
+    p.x *= k;
+    p.y *= k;
+    p.z *= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_div(rt_vec3_t p,
+                             rt_vec3_t q)
+{
+    p.x /= q.x;
+    p.y /= q.y;
+    p.z /= q.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_div_scalar(rt_vec3_t   p,
+                                    rt_float_t  k)
+{
+    p.x /= k;
+    p.y /= k;
+    p.z /= k;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_negate(rt_vec3_t p)
+{
+    p.x = -p.x;
+    p.y = -p.y;
+    p.z = -p.z;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec3_len(rt_vec3_t p)
+{
+    return sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec3_sqrlen(rt_vec3_t p)
+{
+    return p.x * p.x + p.y * p.y + p.z * p.z;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec3_dot(rt_vec3_t p,
+                              rt_vec3_t q)
+{
+    return p.x * q.x + p.y * q.y + p.z * q.z;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_cross(rt_vec3_t p,
+                               rt_vec3_t q)
+{
+    rt_vec3_t r = {
+        .x = p.y * q.z - p.z * q.y,
+        .y = p.z * q.x - p.x * q.z,
+        .z = p.x * q.y - p.y * q.x,
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_norm(rt_vec3_t p)
+{
+    rt_float_t k = p.x * p.x + p.y * p.y + p.z * p.z;
+
+    if (k > RT_FLOAT(0.0)) {
+
+        k = RT_FLOAT(1.0) / sqrt(k);
+
+        p.x *= k;
+        p.y *= k;
+        p.z *= k;
+    }
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API uint32_t rt_vec3_to_uint32(rt_vec3_t p)
+{
+    uint32_t x = (uint32_t)(p.x * RT_FLOAT(255.99));
+    uint32_t y = (uint32_t)(p.y * RT_FLOAT(255.99));
+    uint32_t z = (uint32_t)(p.z * RT_FLOAT(255.99));
+
+    return (z << 16) | (y << 8) | (x << 0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API uint32_t rt_vec3_to_uint32_alpha(rt_vec3_t   p,
+                                        rt_float_t  a)
+{
+    uint32_t x = (uint32_t)(p.x * RT_FLOAT(255.99));
+    uint32_t y = (uint32_t)(p.y * RT_FLOAT(255.99));
+    uint32_t z = (uint32_t)(p.z * RT_FLOAT(255.99));
+    uint32_t w = (uint32_t)(  a * RT_FLOAT(255.99));
+
+    return (w << 24) | (z << 16) | (y << 8) | (x << 0);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_uint32_to_vec3(uint32_t p)
+{
+    uint8_t x = (uint8_t)(p >> 0);
+    uint8_t y = (uint8_t)(p >> 8);
+    uint8_t z = (uint8_t)(p >> 16);
+
+    rt_vec3_t r = {
+        .x = (rt_float_t)x / RT_FLOAT(255.99),
+        .y = (rt_float_t)y / RT_FLOAT(255.99),
+        .z = (rt_float_t)z / RT_FLOAT(255.99),
+    };
+
+    return r;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_apply_0(rt_vec3_t  p,
+                                 rt_float_t (*fun)(void))
+{
+    p.x = fun();
+    p.y = fun();
+    p.z = fun();
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_apply_1(rt_vec3_t  p,
+                                 rt_float_t (*fun)(rt_float_t))
+{
+    p.x = fun(p.x);
+    p.y = fun(p.y);
+    p.z = fun(p.z);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_apply_2(rt_vec3_t  p,
+                                 rt_float_t (*fun)(rt_float_t, rt_float_t),
+                                 rt_float_t k)
+{
+    p.x = fun(p.x, k);
+    p.y = fun(p.y, k);
+    p.z = fun(p.z, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_lerp(rt_vec3_t     p,
+                              rt_vec3_t     q,
+                              rt_float_t    k)
+{
+    p.x += k * (q.x - p.x);
+    p.y += k * (q.y - p.y);
+    p.z += k * (q.z - p.z);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_rand(uint32_t seed)
+{
+    srand(seed);
+    rt_vec3_t p = {
+        .x = (rt_float_t)(rand() % RAND_MAX),
+        .y = (rt_float_t)(rand() % RAND_MAX),
+        .z = (rt_float_t)(rand() % RAND_MAX),
+    };
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_max(rt_vec3_t  p,
+                             rt_float_t k)
+{
+    p.x = fmax(p.x, k);
+    p.y = fmax(p.y, k);
+    p.z = fmax(p.z, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_min(rt_vec3_t  p,
+                             rt_float_t k)
+{
+    p.x = fmin(p.x, k);
+    p.y = fmin(p.y, k);
+    p.z = fmin(p.z, k);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_max_vec3(rt_vec3_t p,
+                                  rt_vec3_t q)
+{
+    p.x = fmin(p.x, q.x);
+    p.y = fmin(p.y, q.y);
+    p.z = fmin(p.z, q.z);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_min_vec3(rt_vec3_t p,
+                                  rt_vec3_t q)
+{
+    p.x = fmax(p.x, q.x);
+    p.y = fmax(p.y, q.y);
+    p.z = fmax(p.z, q.z);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_clamp(rt_vec3_t p,
+                               rt_vec2_t range)
+{
+    p.x = rt_clamp(p.x, range.x, range.y);
+    p.y = rt_clamp(p.y, range.x, range.y);
+    p.z = rt_clamp(p.z, range.x, range.y);
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_reflect(rt_vec3_t  p,
+                                 rt_vec3_t  n)
+{
+    n               = rt_vec3_norm(n);
+    rt_float_t d    = RT_FLOAT(2.0) * rt_vec3_dot(p, n);
+
+    p.x -= n.x * d;
+    p.y -= n.y * d;
+    p.z -= n.z * d;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_refract(rt_vec3_t  p,
+                                 rt_vec3_t  n,
+                                 rt_float_t k)
+{
+    rt_vec3_t pnegated      = rt_vec3_negate(p);
+    rt_float_t cos_theta    = fmin(RT_FLOAT(1.0), rt_vec3_dot(pnegated, n));
+    rt_vec3_t perpendicular = rt_vec3_mul_scalar(rt_vec3_add(p,
+                                                             rt_vec3_mul_scalar(n,
+                                                                                cos_theta)),
+                                                             k);
+    rt_float_t a            = -sqrt(fabs(RT_FLOAT(1.0) - rt_vec3_sqrlen(perpendicular)));
+    rt_vec3_t parallel      = rt_vec3_mul_scalar(n, a);
+    return rt_vec3_add(perpendicular, parallel);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec3_dist(rt_vec3_t p,
+                               rt_vec3_t q)
+{
+    rt_float_t x = p.x - q.x;
+    rt_float_t y = p.y - q.y;
+    rt_float_t z = p.z - q.z;
+
+    return sqrt(x * x + y * y + z * z);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_vec3_sqrdist(rt_vec3_t p,
+                                  rt_vec3_t q)
+{
+    rt_float_t x = p.x - q.x;
+    rt_float_t y = p.y - q.y;
+    rt_float_t z = p.z - q.z;
+
+    return x * x + y * y + z * z;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_rotate_x(rt_vec3_t     p,
+                                  rt_float_t    r)
+{
+    rt_float_t py = p.y;
+    rt_float_t pz = p.z;
+
+    rt_float_t cos_r = cos(r);
+    rt_float_t sin_r = sin(r);
+
+    p.y = py * cos_r - pz * sin_r;
+    p.z = py * sin_r + pz * cos_r;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_rotate_y(rt_vec3_t     p,
+                                  rt_float_t    r)
+{
+    rt_float_t px = p.x;
+    rt_float_t pz = p.z;
+
+    rt_float_t cos_r = cos(r);
+    rt_float_t sin_r = sin(r);
+
+    p.x =  px * cos_r + pz * sin_r;
+    p.z = -px * sin_r + pz * cos_r;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec3_t rt_vec3_rotate_z(rt_vec3_t     p,
+                                  rt_float_t    r)
+{
+    rt_float_t px = p.x;
+    rt_float_t py = p.y;
+
+    rt_float_t cos_r = cos(r);
+    rt_float_t sin_r = sin(r);
+
+    p.x = px * cos_r + py * sin_r;
+    p.y = py * cos_r - px * sin_r;
+
+    return p;
+}
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
@@ -476,10 +1210,10 @@ RT_API rt_vec4_t rt_vec4_div_scalar(rt_vec4_t   p,
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_vec4_t rt_vec4_negate(rt_vec4_t p)
 {
-    p.x *= RT_FLOAT(-1.0);
-    p.y *= RT_FLOAT(-1.0);
-    p.z *= RT_FLOAT(-1.0);
-    p.w *= RT_FLOAT(-1.0);
+    p.x = -p.x;
+    p.y = -p.y;
+    p.z = -p.z;
+    p.w = -p.w;
 
     return p;
 }
@@ -521,8 +1255,11 @@ RT_API rt_vec4_t rt_vec4_cross(rt_vec4_t p,
 RT_API rt_vec4_t rt_vec4_norm(rt_vec4_t p)
 {
     rt_float_t k = p.x * p.x + p.y * p.y + p.z * p.z + p.w * p.w;
+
     if (k > RT_FLOAT(0.0)) {
+
         k = RT_FLOAT(1.0) / sqrt(k);
+
         p.x *= k;
         p.y *= k;
         p.z *= k;
@@ -718,14 +1455,13 @@ RT_API rt_vec4_t rt_vec4_min_vec4(rt_vec4_t p,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_vec4_clamp(rt_vec4_t            p,
-                               rt_float_t           min,
-                               rt_float_t           max)
+RT_API rt_vec4_t rt_vec4_clamp(rt_vec4_t p,
+                               rt_vec2_t range)
 {
-    p.x = rt_clamp(p.x, min, max);
-    p.y = rt_clamp(p.y, min, max);
-    p.z = rt_clamp(p.z, min, max);
-    p.w = rt_clamp(p.w, min, max);
+    p.x = rt_clamp(p.x, range.x, range.y);
+    p.y = rt_clamp(p.y, range.x, range.y);
+    p.z = rt_clamp(p.z, range.x, range.y);
+    p.w = rt_clamp(p.w, range.x, range.y);
 
     return p;
 }
@@ -813,6 +1549,22 @@ RT_API rt_vec4_t rt_vec4_rotate_y(rt_vec4_t     p,
 
     p.x =  px * cos_r + pz * sin_r;
     p.z = -px * sin_r + pz * cos_r;
+
+    return p;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_vec4_rotate_z(rt_vec4_t     p,
+                                  rt_float_t    r)
+{
+    rt_float_t px = p.x;
+    rt_float_t py = p.y;
+
+    rt_float_t cos_r = cos(r);
+    rt_float_t sin_r = sin(r);
+
+    p.x = px * cos_r + py * sin_r;
+    p.y = py * cos_r - px * sin_r;
 
     return p;
 }
@@ -3921,9 +4673,10 @@ typedef struct
 rt_fps_camera_update_with_sdl3_joystick_params_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_update_with_sdl3_joystick(
-        const rt_fps_camera_update_with_sdl3_joystick_params_t*     params,
-        rt_fps_camera_update_with_sdl3_joystick_callbacks_t         callbacks
+RT_API void rt_fps_camera_update_with_sdl3_joystick
+(
+    const rt_fps_camera_update_with_sdl3_joystick_params_t*     params,
+    rt_fps_camera_update_with_sdl3_joystick_callbacks_t         callbacks
 )
 {
     RT_ASSERT(params        != NULL);

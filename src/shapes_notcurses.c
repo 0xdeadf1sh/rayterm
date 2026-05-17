@@ -18,6 +18,7 @@
 
 #include <SDL3/SDL_gamepad.h>
 #include <notcurses/notcurses.h>
+
 #define RT_USE_NOTCURSES
 #define RT_USE_SDL3
 #include "rayterm.h"
