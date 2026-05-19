@@ -70,6 +70,10 @@ static void app_destroy(app_state_t* state)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+///////////////////////////////// CALLBACKS ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
 static void gamepad_down_callback(int32_t button, void* userPtr)
 {
     app_state_t* app = (app_state_t*)userPtr;
@@ -391,6 +395,9 @@ int main(void)
     rt_timer_t timer        = {};
     rt_float_t total_time   = RT_FLOAT(0.0);
 
+    char ascii_characters[]         = " .,-~:;=!*#$@";
+    uint32_t ascii_characters_len   = sizeof(ascii_characters) - 1;
+
     while (is_running) {
 
         rt_notcurses_surface_resize(&notcurses_surface,
@@ -399,10 +406,10 @@ int main(void)
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
         total_time += delta_time;
 
-        rt_vec4_t yellow_sun_dir = { RT_FLOAT(0.0), 
+        rt_vec4_t yellow_sun_dir = { RT_FLOAT( 0.0),
                                      RT_FLOAT(-1.0),
                                      RT_FLOAT(-1.0),
-                                     RT_FLOAT(0.0), };
+                                     RT_FLOAT( 0.0), };
 
         yellow_sun_dir = rt_vec4_norm(yellow_sun_dir);
 
@@ -447,11 +454,15 @@ int main(void)
 
         if (!app.gamepad_info.gamepad) {
 
-            rt_fps_camera_update_with_notcurses(&fps_camera,
-                                                delta_time,
-                                                &keyboard_bindings,
-                                                app.nc,
-                                                &is_running);
+            rt_fps_camera_update_with_notcurses_params_t update_params = {
+                .camera         = &fps_camera,
+                .delta_time     = delta_time,
+                .keybindings    = &keyboard_bindings,
+                .nc             = app.nc,
+                .is_running     = &is_running,
+            };
+
+            rt_fps_camera_update_with_notcurses(&update_params);
 
         }
 
@@ -470,7 +481,9 @@ int main(void)
         rt_fps_camera_render(&camera_render_params);
 
         rt_notcurses_surface_blit(&notcurses_surface,
-                                  &app.framebuffer);
+                                  &app.framebuffer,
+                                  ascii_characters,
+                                  ascii_characters_len);
 
         RT_ASSERT(-1 != notcurses_render(app.nc));
 

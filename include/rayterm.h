@@ -24,9 +24,9 @@
 #define RT_RAYTERM_H
 
 #include <assert.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdint.h>
-#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +34,9 @@
 ///////////////////////////////////////////////////////////////////////////
 ////////////////////////////////// API ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+#ifndef RT_API
 #define RT_API                          static inline
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// TYPES ///////////////////////////////////
@@ -73,12 +75,36 @@ typedef int32_t rt_idx_t;
 ///////////////////////////////////////////////////////////////////////////
 ////////////////////////////// CONSTANTS //////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_GAMMA
 #define RT_GAMMA                        RT_FLOAT(2.2)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_PI
 #define RT_PI                           RT_FLOAT(3.1415926)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_EPSILON
 #define RT_EPSILON                      RT_FLOAT(0.000001)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_SHADOW_BIAS
 #define RT_SHADOW_BIAS                  RT_FLOAT(0.001)
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_MAX_SHADOW_LIGHTS
 #define RT_MAX_SHADOW_LIGHTS            8
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_INIT_CAP
 #define RT_INIT_CAP                     8
+#endif
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////// ERROR CALLBACK ///////////////////////////////
@@ -94,12 +120,12 @@ typedef void (*rt_error_callback_t)(const char*             filename,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-enum rt_status
+typedef enum
 {
     RT_STATUS_success,
     RT_STATUS_failure,
-};
-typedef enum rt_status rt_status_t;
+}
+rt_status_t;
 
 ///////////////////////////////////////////////////////////////////////////
 static void* rt_default_user_param = NULL;
@@ -675,6 +701,7 @@ RT_API rt_vec2_t rt_vec2_refract(rt_vec2_t  p,
                                                              k);
     rt_float_t a            = -sqrt(fabs(RT_FLOAT(1.0) - rt_vec2_sqrlen(perpendicular)));
     rt_vec2_t parallel      = rt_vec2_mul_scalar(n, a);
+
     return rt_vec2_add(perpendicular, parallel);
 }
 
@@ -1031,6 +1058,7 @@ RT_API rt_vec3_t rt_vec3_refract(rt_vec3_t  p,
                                                              k);
     rt_float_t a            = -sqrt(fabs(RT_FLOAT(1.0) - rt_vec3_sqrlen(perpendicular)));
     rt_vec3_t parallel      = rt_vec3_mul_scalar(n, a);
+
     return rt_vec3_add(perpendicular, parallel);
 }
 
@@ -1392,8 +1420,8 @@ RT_API rt_vec4_t rt_vec4_rand(uint32_t seed)
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_vec4_rand_alpha(uint32_t seed,
-                                    rt_float_t alpha)
+RT_API rt_vec4_t rt_vec4_rand_alpha(uint32_t    seed,
+                                    rt_float_t  alpha)
 {
     srand(seed);
     rt_vec4_t p = {
@@ -1494,6 +1522,7 @@ RT_API rt_vec4_t rt_vec4_refract(rt_vec4_t      p,
                                                              k);
     rt_float_t a            = -sqrt(fabs(RT_FLOAT(1.0) - rt_vec4_sqrlen(perpendicular)));
     rt_vec4_t parallel      = rt_vec4_mul_scalar(n, a);
+
     return rt_vec4_add(perpendicular, parallel);
 }
 
@@ -1574,7 +1603,7 @@ RT_API rt_vec4_t rt_vec4_rotate_z(rt_vec4_t     p,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-enum rt_material_type
+typedef enum
 {
     RT_MATERIAL_TYPE_null_material,
     RT_MATERIAL_TYPE_emissive_material,
@@ -1582,7 +1611,8 @@ enum rt_material_type
     RT_MATERIAL_TYPE_diffuse_material,
     RT_MATERIAL_TYPE_metallic_material,
     RT_MATERIAL_TYPE_dielectric_material,
-};
+}
+rt_material_type_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
@@ -1642,14 +1672,15 @@ typedef struct
 rt_ray_t;
 
 ///////////////////////////////////////////////////////////////////////////
-enum rt_hit_geometry_type
+typedef enum
 {
     RT_HIT_null,
     RT_HIT_sphere,
     RT_HIT_plane,
     RT_HIT_aabb,
     RT_HIT_count,
-};
+}
+rt_hit_geometry_type_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
@@ -1665,7 +1696,7 @@ rt_hit_info_t;
 typedef struct
 {
     rt_hit_info_t               info;
-    enum rt_hit_geometry_type   geometry_type;
+    rt_hit_geometry_type_t      geometry_type;
     rt_idx_t                    geometry_index;
 }
 rt_hit_ext_info_t;
@@ -1675,6 +1706,7 @@ RT_API rt_vec4_t rt_ray_at(rt_ray_t         ray,
                            rt_float_t       t)
 {
     rt_vec4_t dir_scaled = rt_vec4_mul_scalar(ray.dir, t);
+
     return rt_vec4_add(ray.org, dir_scaled);
 }
 
@@ -1695,7 +1727,7 @@ typedef struct
 {
     rt_sphere_params_t      geometry_params;
     rt_idx_t                material_index;
-    enum rt_material_type   material_type;
+    rt_material_type_t      material_type;
 }
 rt_sphere_t;
 
@@ -1713,7 +1745,7 @@ typedef struct
 {
     rt_plane_params_t       geometry_params;
     rt_idx_t                material_index;
-    enum rt_material_type   material_type;
+    rt_material_type_t      material_type;
 }
 rt_plane_t;
 
@@ -1730,19 +1762,22 @@ typedef struct
 {
     rt_aabb_params_t        geometry_params;
     rt_idx_t                material_index;
-    enum rt_material_type   material_type;
+    rt_material_type_t      material_type;
 }
 rt_aabb_t;
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
                           rt_ray_t                  ray,
-                          rt_float_t                nearest_z,
-                          rt_float_t                farthest_z,
+                          rt_vec2_t                 range_z,
                           rt_hit_info_t*            info)
 {
-    RT_ASSERT(info          != NULL);
-    RT_ASSERT(nearest_z     <= farthest_z);
+    RT_ASSERT(info         != NULL);
+
+    rt_float_t nearest_z    = range_z.x;
+    rt_float_t farthest_z   = range_z.y;
+
+    RT_ASSERT(nearest_z    <= farthest_z);
 
     rt_float_t sphere_radius = sphere.geometry_params.radius;
     rt_vec4_t sphere_center  = sphere.geometry_params.center;
@@ -1794,12 +1829,15 @@ RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_plane_hit(rt_plane_t             plane,
                          rt_ray_t               ray,
-                         rt_float_t             nearest_z,
-                         rt_float_t             farthest_z,
+                         rt_vec2_t              range_z,
                          rt_hit_info_t*         info)
 {
-    RT_ASSERT(info          != NULL);
-    RT_ASSERT(nearest_z     <= farthest_z);
+    RT_ASSERT(info                 != NULL);
+
+    rt_float_t nearest_z            = range_z.x;
+    rt_float_t farthest_z           = range_z.y;
+
+    RT_ASSERT(nearest_z            <= farthest_z);
 
     rt_vec4_t plane_position        = plane.geometry_params.position;
     rt_vec4_t plane_normal          = plane.geometry_params.normal;
@@ -1847,29 +1885,34 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_aabb_hit(rt_aabb_t              aabb,
                         rt_ray_t               ray,
-                        rt_float_t             nearest_z,
-                        rt_float_t             farthest_z,
+                        rt_vec2_t              range_z,
                         rt_hit_info_t*         info)
 {
-    RT_ASSERT(info      != NULL);
-    RT_ASSERT(nearest_z <= farthest_z);
+    RT_ASSERT(info         != NULL);
+
+    rt_float_t nearest_z    = range_z.x;
+    rt_float_t farthest_z   = range_z.y;
+
+    RT_ASSERT(nearest_z    <= farthest_z);
 
     rt_float_t tmin = (aabb.geometry_params.min_bounding_box.x - ray.org.x) / ray.dir.x;
     rt_float_t tmax = (aabb.geometry_params.max_bounding_box.x - ray.org.x) / ray.dir.x;
 
     if (tmin > tmax) {
-        rt_float_t tmp = tmin;
-        tmin = tmax;
-        tmax = tmp;
+
+        rt_float_t tmp  = tmin;
+        tmin            = tmax;
+        tmax            = tmp;
     }
 
     rt_float_t tymin = (aabb.geometry_params.min_bounding_box.y - ray.org.y) / ray.dir.y;
     rt_float_t tymax = (aabb.geometry_params.max_bounding_box.y - ray.org.y) / ray.dir.y;
 
     if (tymin > tymax) {
-        rt_float_t tmp = tymin;
-        tymin = tymax;
-        tymax = tmp;
+
+        rt_float_t tmp  = tymin;
+        tymin           = tymax;
+        tymax           = tmp;
     }
 
     if ((tmin > tymax) || (tymin > tmax)) {
@@ -1883,9 +1926,10 @@ RT_API bool rt_aabb_hit(rt_aabb_t              aabb,
     rt_float_t tzmax = (aabb.geometry_params.max_bounding_box.z - ray.org.z) / ray.dir.z;
 
     if (tzmin > tzmax) {
-        rt_float_t tmp = tzmin;
-        tzmin = tzmax;
-        tzmax = tmp;
+
+        rt_float_t tmp  = tzmin;
+        tzmin           = tzmax;
+        tzmax           = tmp;
     }
 
     if ((tmin > tzmax) || (tzmin > tmax)) {
@@ -1916,12 +1960,13 @@ RT_API bool rt_aabb_hit(rt_aabb_t              aabb,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-enum rt_light_type
+typedef enum
 {
     RT_LIGHT_null_light,
     RT_LIGHT_directional_light,
     RT_LIGHT_point_light,
-};
+}
+rt_light_type_t;
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
@@ -1956,7 +2001,7 @@ typedef struct
     rt_vec4_t   rayleigh_scattering;
     rt_float_t  mie_scattering;
     rt_float_t  phase_eccentricity;
-    uint32_t    steps;
+    rt_idx_t    steps;
 }
 rt_atmosphere_t;
 
@@ -1969,10 +2014,10 @@ RT_API rt_atmosphere_t rt_atmosphere_create_default()
 
         .atmospheric_height     = RT_FLOAT(10.0e3),
 
-        .rayleigh_scattering    = { RT_FLOAT(5.5e-6),
-                                    RT_FLOAT(13.0e-6),
-                                    RT_FLOAT(22.4e-6),
-                                    RT_FLOAT(0.0), },
+        .rayleigh_scattering    = { RT_FLOAT(5.5e-6     ),
+                                    RT_FLOAT(13.0e-6    ),
+                                    RT_FLOAT(22.4e-6    ),
+                                    RT_FLOAT(0.0        ), },
 
         .mie_scattering         = RT_FLOAT(21e-6),
 
@@ -2019,7 +2064,7 @@ RT_API rt_float_t rt_atmosphere_trace(const rt_atmosphere_t* atmosphere,
     rt_float_t r_sky        = radius + atmosphere->atmospheric_height;
 
     rt_vec4_t center        = { RT_FLOAT(0.0),
-                                -radius,
+                               -radius,
                                 RT_FLOAT(0.0),
                                 RT_FLOAT(1.0) };
 
@@ -2061,7 +2106,7 @@ RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
                               pow(RT_FLOAT(1.0) + g * g - RT_FLOAT(2.0) * g * cos_theta,
                               RT_FLOAT(1.5));
 
-    uint32_t steps          = atmosphere->steps;
+    rt_idx_t steps          = atmosphere->steps;
 
     rt_float_t dt           = dist_eye / (rt_float_t)steps;
 
@@ -2076,7 +2121,7 @@ RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
                                 RT_FLOAT(0.0),
                                 RT_FLOAT(1.0), };
 
-    for (uint32_t i = 0; i < steps; ++i) {
+    for (rt_idx_t i = 0; i < steps; ++i) {
 
         rt_float_t t            = dist_eye * (RT_FLOAT(1.0) - (((rt_float_t)i + RT_FLOAT(0.5)) / (rt_float_t)steps));
 
@@ -2114,13 +2159,14 @@ RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-enum rt_face_cull_mode
+typedef enum
 {
     RT_FACE_cull_null,
     RT_FACE_cull_front   = 1 << 0,
     RT_FACE_cull_back    = 1 << 1,
     RT_FACE_cull_both    = RT_FACE_cull_front | RT_FACE_cull_back,
-};
+}
+rt_face_cull_mode_t;
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_WORLD_DEF_BUFFER(NAME)                                       \
@@ -2166,7 +2212,7 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
 
     ///////////////////////////////////////////////////////////////////////////
-    enum rt_face_cull_mode face_cull_mode;
+    rt_face_cull_mode_t face_cull_mode;
 }
 rt_world_t;
 
@@ -2626,16 +2672,20 @@ RT_API void rt_world_set_dielectric_material_params(rt_world_t*                 
 RT_API bool RT_CONCAT3(rt_world_, GEOMETRY, _closest_hit)                   \
 (const rt_world_t*       world,                                             \
  rt_ray_t                ray,                                               \
- rt_float_t              nearest_z,                                         \
- rt_float_t              farthest_z,                                        \
+ rt_vec2_t               range_z,                                           \
  rt_hit_ext_info_t*      info,                                              \
- enum rt_face_cull_mode  face_cull_mode)                                    \
+ rt_face_cull_mode_t     face_cull_mode                                     \
+)                                                                           \
 {                                                                           \
     RT_ASSERT(world     != NULL);                                           \
+                                                                            \
+    rt_float_t nearest_z    = range_z.x;                                    \
+    rt_float_t farthest_z   = range_z.y;                                    \
+                                                                            \
     RT_ASSERT(nearest_z <= farthest_z);                                     \
     RT_ASSERT(info      != NULL);                                           \
                                                                             \
-    enum rt_face_cull_mode cull_mode = face_cull_mode;                      \
+    rt_face_cull_mode_t cull_mode = face_cull_mode;                         \
                                                                             \
     if (RT_FACE_cull_both == cull_mode) {                                   \
                                                                             \
@@ -2662,8 +2712,7 @@ RT_API bool RT_CONCAT3(rt_world_, GEOMETRY, _closest_hit)                   \
                                                                             \
         if (RT_CONCAT3(rt_, GEOMETRY, _hit)(RT_CONCAT2(GEOMETRY, _buffer)[i],\
                                             ray,                            \
-                                            nearest_z,                      \
-                                            farthest_z,                     \
+                                            range_z,                        \
                                             &hit_info)) {                   \
                                                                             \
             bool is_front_facing = hit_info.is_front_facing;                \
@@ -2704,13 +2753,27 @@ RT_WORLD_DEF_CLOSEST_HIT(plane)
 RT_WORLD_DEF_CLOSEST_HIT(aabb)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_world_any_closest_hit(const rt_world_t*          world,
-                                     rt_ray_t                   ray,
-                                     rt_float_t                 nearest_z,
-                                     rt_float_t                 farthest_z,
-                                     rt_hit_ext_info_t*         info,
-                                     enum rt_face_cull_mode     face_cull_mode)
+typedef struct
 {
+    const rt_world_t*       world;
+    rt_ray_t                ray;
+    rt_vec2_t               range_z;
+    rt_hit_ext_info_t*      info;
+    rt_face_cull_mode_t     face_cull_mode;
+}
+rt_world_any_closest_hit_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_world_any_closest_hit(const rt_world_any_closest_hit_params_t* params)
+{
+    RT_ASSERT(params != NULL);
+
+    const rt_world_t* world             = params->world;
+    rt_ray_t ray                        = params->ray;
+    rt_vec2_t range                     = params->range_z;
+    rt_hit_ext_info_t* info             = params->info;
+    rt_face_cull_mode_t face_cull_mode  = params->face_cull_mode;
+
     bool is_hit_bool_array[RT_HIT_count]            = {};
     rt_hit_ext_info_t hit_info_array[RT_HIT_count]  = {};
 
@@ -2718,36 +2781,33 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*          world,
 
     is_hit_bool_array[RT_HIT_sphere] = rt_world_sphere_closest_hit(world,
                                                                    ray,
-                                                                   nearest_z,
-                                                                   farthest_z,
+                                                                   range,
                                                                    &hit_info_array[RT_HIT_sphere],
                                                                    face_cull_mode);
 
     is_hit_bool_array[RT_HIT_plane] = rt_world_plane_closest_hit(world,
                                                                  ray,
-                                                                 nearest_z,
-                                                                 farthest_z,
+                                                                 range,
                                                                  &hit_info_array[RT_HIT_plane],
                                                                  face_cull_mode);
 
     is_hit_bool_array[RT_HIT_aabb] = rt_world_aabb_closest_hit(world,
                                                                ray,
-                                                               nearest_z,
-                                                               farthest_z,
+                                                               range,
                                                                &hit_info_array[RT_HIT_aabb],
                                                                face_cull_mode);
 
     rt_idx_t hit_idx        = -1;
     rt_float_t closest_z    = RT_FLOAT(0.0);
 
-    for (uint32_t i = 0; i < RT_HIT_count; ++i) {
+    for (rt_idx_t i = 0; i < RT_HIT_count; ++i) {
 
         if (is_hit_bool_array[i]) {
 
             if (-1 == hit_idx || hit_info_array[i].info.t < closest_z) {
 
                 closest_z   = hit_info_array[i].info.t;
-                hit_idx     = (rt_idx_t)i;
+                hit_idx     = i;
 
             }
         }
@@ -2768,6 +2828,7 @@ RT_API bool rt_world_any_closest_hit(const rt_world_t*          world,
 RT_API rt_vec4_t rt_fragment_shader_emissive(rt_emissive_material_t* material)
 {
     RT_ASSERT(material != NULL);
+
     return material->color;
 }
 
@@ -2779,9 +2840,9 @@ RT_API rt_vec4_t rt_fragment_shader_emissive(rt_emissive_material_t* material)
                                     SHADOW_LIGHT_INDEX,                 \
                                     SHADOW_LIGHT_TYPE)                  \
 {                                                                       \
-    if (LIGHT->casts_shadows &&                                         \
-        MATERIAL->receives_shadows &&                                   \
-        LIGHT_INDEX == SHADOW_LIGHT_INDEX &&                            \
+    if (LIGHT->casts_shadows                &&                          \
+        MATERIAL->receives_shadows          &&                          \
+        LIGHT_INDEX == SHADOW_LIGHT_INDEX   &&                          \
         LIGHT_TYPE == SHADOW_LIGHT_TYPE) {                              \
                                                                         \
         continue;                                                       \
@@ -2814,29 +2875,46 @@ RT_API rt_vec4_t rt_fragment_shader_emissive(rt_emissive_material_t* material)
 }                                                                       \
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_info,
-                                            const rt_diffuse_material_t*    material,
-                                            const rt_world_t*               world,
-                                            const rt_idx_t*                 shadow_lights,
-                                            const enum rt_light_type*       shadow_light_types,
-                                            rt_idx_t                        shadow_light_count)
+typedef struct
 {
-    RT_ASSERT(hit_info  != NULL);
-    RT_ASSERT(material  != NULL);
-    RT_ASSERT(world     != NULL);
+    const rt_hit_info_t*            hit_info;
+    const rt_diffuse_material_t*    material;
+    const rt_world_t*               world;
+    const rt_idx_t*                 shadow_lights;
+    const rt_light_type_t*          shadow_light_types;
+    rt_idx_t                        shadow_light_count;
+}
+rt_fragment_shader_diffuse_params_t;
 
-    rt_vec4_t final_color = material->ambient;
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_fragment_shader_diffuse
+(const rt_fragment_shader_diffuse_params_t* params)
+{
+    RT_ASSERT(params                           != NULL);
+
+    const rt_hit_info_t* hit_info               = params->hit_info;
+    const rt_diffuse_material_t* material       = params->material;
+    const rt_world_t* world                     = params->world;
+    const rt_idx_t* shadow_lights               = params->shadow_lights;
+    const rt_light_type_t* shadow_light_types   = params->shadow_light_types;
+    rt_idx_t shadow_light_count                 = params->shadow_light_count;
+
+    RT_ASSERT(hit_info                         != NULL);
+    RT_ASSERT(material                         != NULL);
+    RT_ASSERT(world                            != NULL);
+
+    rt_vec4_t final_color                       = material->ambient;
 
     const rt_idx_t directional_light_count              = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
 
     for (rt_idx_t i = 0; i < directional_light_count; ++i) {
 
-        const rt_directional_light_t* light = &directional_lights[i];
-        RT_ASSERT(light != NULL);
+        const rt_directional_light_t* light     = &directional_lights[i];
+        RT_ASSERT(light                        != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -2868,7 +2946,8 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -2883,10 +2962,10 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
         const rt_point_light_t* light   = &point_lights[i];
-        RT_ASSERT(light != NULL);
+        RT_ASSERT(light                != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -2913,7 +2992,8 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -2926,30 +3006,46 @@ RT_API rt_vec4_t rt_fragment_shader_diffuse(const rt_hit_info_t*            hit_
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_info,
-                                             const rt_metallic_material_t*  material,
-                                             const rt_world_t*              world,
-                                             const rt_idx_t*                shadow_lights,
-                                             const enum rt_light_type*      shadow_light_types,
-                                             rt_idx_t                       shadow_light_count)
-
+typedef struct
 {
+    const rt_hit_info_t*            hit_info;
+    const rt_metallic_material_t*   material;
+    const rt_world_t*               world;
+    const rt_idx_t*                 shadow_lights;
+    const rt_light_type_t*          shadow_light_types;
+    rt_idx_t                        shadow_light_count;
+}
+rt_fragment_shader_metallic_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_fragment_shader_metallic
+(const rt_fragment_shader_metallic_params_t* params)
+{
+    RT_ASSERT(params    != NULL);
+
+    const rt_hit_info_t* hit_info               = params->hit_info;
+    const rt_metallic_material_t* material      = params->material;
+    const rt_world_t* world                     = params->world;
+    const rt_idx_t* shadow_lights               = params->shadow_lights;
+    const rt_light_type_t* shadow_light_types   = params->shadow_light_types;
+    rt_idx_t shadow_light_count                 = params->shadow_light_count;
+
     RT_ASSERT(hit_info  != NULL);
     RT_ASSERT(material  != NULL);
     RT_ASSERT(world     != NULL);
 
-    rt_vec4_t final_color = material->ambient;
+    rt_vec4_t final_color                               = material->ambient;
 
-    rt_idx_t directional_light_count              = world->directional_light_count;
+    rt_idx_t directional_light_count                    = world->directional_light_count;
     const rt_directional_light_t* directional_lights    = world->directional_light_buffer;
 
     for (rt_idx_t i = 0; i < directional_light_count; ++i) {
 
-        const rt_directional_light_t* light = &directional_lights[i];
-        RT_ASSERT(light != NULL);
+        const rt_directional_light_t* light     = &directional_lights[i];
+        RT_ASSERT(light                        != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -2981,7 +3077,8 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
                                                              diff);
@@ -2996,10 +3093,10 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
         const rt_point_light_t* light   = &point_lights[i];
-        RT_ASSERT(light != NULL);
+        RT_ASSERT(light                != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -3026,7 +3123,8 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t specular              = rt_vec4_mul_scalar(specular_color,
                                                              diff);
@@ -3039,15 +3137,33 @@ RT_API rt_vec4_t rt_fragment_shader_metallic(const rt_hit_info_t*           hit_
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*               hit_info,
-                                                 const rt_checkerboard_material_t*  material,
-                                                 const rt_world_t*                  world,
-                                                 const rt_idx_t*                    shadow_lights,
-                                                 const enum rt_light_type*          shadow_light_types,
-                                                 rt_idx_t                           shadow_light_count)
+typedef struct
 {
+    const rt_hit_info_t*                hit_info;
+    const rt_checkerboard_material_t*   material;
+    const rt_world_t*                   world;
+    const rt_idx_t*                     shadow_lights;
+    const rt_light_type_t*              shadow_light_types;
+    rt_idx_t                            shadow_light_count;
+}
+rt_fragment_shader_checkerboard_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_fragment_shader_checkerboard
+(const rt_fragment_shader_checkerboard_params_t* params)
+{
+    RT_ASSERT(params       != NULL);
+
+    const rt_hit_info_t* hit_info               = params->hit_info;
+    const rt_checkerboard_material_t* material  = params->material;
+    const rt_world_t* world                     = params->world;
+    const rt_idx_t* shadow_lights               = params->shadow_lights;
+    const rt_light_type_t* shadow_light_types   = params->shadow_light_types;
+    rt_idx_t shadow_light_count                 = params->shadow_light_count;
+
     RT_ASSERT(hit_info     != NULL);
     RT_ASSERT(material     != NULL);
+    RT_ASSERT(world        != NULL);
 
     uint32_t pos_x_quant    = (uint32_t)(ceil(hit_info->position.x * 0.5f));
     uint32_t pos_z_quant    = (uint32_t)(ceil(hit_info->position.z * 0.5f));
@@ -3064,11 +3180,11 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
 
     for (rt_idx_t i = 0; i < directional_light_count; ++i) {
 
-        const rt_directional_light_t* light = &directional_lights[i];
-        RT_ASSERT(light != NULL);
+        const rt_directional_light_t* light     = &directional_lights[i];
+        RT_ASSERT(light                        != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -3085,8 +3201,8 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
                                         shadow_light_index,
                                         shadow_light_type);
 
-        rt_ray_t light_ray             = { .org = hit_info->position,
-                                           .dir = rt_vec4_negate(light->direction), };
+        rt_ray_t light_ray              = { .org = hit_info->position,
+                                            .dir = rt_vec4_negate(light->direction), };
 
         rt_vec4_t light_color           = rt_atmosphere_scatter(&world->atmosphere,
                                                                 light_ray,
@@ -3100,7 +3216,8 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -3115,10 +3232,10 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
         const rt_point_light_t* light   = &point_lights[i];
-        RT_ASSERT(light != NULL);
+        RT_ASSERT(light                != NULL);
 
         rt_idx_t shadow_light_index             = -1;
-        enum rt_light_type shadow_light_type    = RT_LIGHT_null_light;
+        rt_light_type_t shadow_light_type       = RT_LIGHT_null_light;
 
         RT_FIND_INDEX_OF_SHADOW_LIGHT(  shadow_lights,
                                         shadow_light_types,
@@ -3145,7 +3262,8 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
                                                       light_color);
 
         rt_float_t diff                 = fmax(rt_vec4_dot(light_dir,
-                                                           hit_info->normal), RT_FLOAT(0.0));
+                                                           hit_info->normal),
+                                               RT_FLOAT(0.0));
 
         rt_vec4_t diffuse               = rt_vec4_mul_scalar(diffuse_color,
                                                              diff);
@@ -3165,60 +3283,78 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard(const rt_hit_info_t*           
 RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
                                    const rt_hit_ext_info_t*  hit_info)
 {
-        enum rt_material_type material_type = RT_MATERIAL_TYPE_null_material;
-        rt_idx_t material_index             = -1;
+    rt_material_type_t material_type    = RT_MATERIAL_TYPE_null_material;
+    rt_idx_t material_index             = -1;
 
-        switch (hit_info->geometry_type) {
-            case RT_HIT_sphere: {
+    switch (hit_info->geometry_type) {
+        case RT_HIT_sphere: {
 
-                rt_sphere_t* sphere = &world->sphere_buffer[hit_info->geometry_index];
-                RT_ASSERT(sphere != NULL);
+            rt_sphere_t* sphere     = &world->sphere_buffer[hit_info->geometry_index];
+            RT_ASSERT(sphere       != NULL);
 
-                material_type   = sphere->material_type;
-                material_index  = sphere->material_index;
+            material_type           = sphere->material_type;
+            material_index          = sphere->material_index;
 
-                break;
-            }
-            case RT_HIT_plane: {
-
-                rt_plane_t* plane = &world->plane_buffer[hit_info->geometry_index];
-                RT_ASSERT(plane != NULL);
-
-                material_type   = plane->material_type;
-                material_index  = plane->material_index;
-
-                break;
-            }
-            case RT_HIT_aabb: {
-                
-                rt_aabb_t* aabb = &world->aabb_buffer[hit_info->geometry_index];
-                RT_ASSERT(aabb != NULL);
-
-                material_type   = aabb->material_type;
-                material_index  = aabb->material_index;
-
-                break;
-            }
-            default: {
-                RT_ASSERT(0 && "Unspecified geometry type!");
-                break;
-            }
+            break;
         }
+        case RT_HIT_plane: {
 
-        return !(material_index == -1                                 ||
-                 RT_MATERIAL_TYPE_null_material == material_type      ||
-                 RT_MATERIAL_TYPE_emissive_material == material_type);
+            rt_plane_t* plane       = &world->plane_buffer[hit_info->geometry_index];
+            RT_ASSERT(plane        != NULL);
+
+            material_type           = plane->material_type;
+            material_index          = plane->material_index;
+
+            break;
+        }
+        case RT_HIT_aabb: {
+
+            rt_aabb_t* aabb         = &world->aabb_buffer[hit_info->geometry_index];
+            RT_ASSERT(aabb         != NULL);
+
+            material_type           = aabb->material_type;
+            material_index          = aabb->material_index;
+
+            break;
+        }
+        default: {
+            RT_ASSERT(0 && "Unspecified geometry type!");
+            break;
+        }
+    }
+
+    return !(material_index == -1                                 ||
+             RT_MATERIAL_TYPE_null_material == material_type      ||
+             RT_MATERIAL_TYPE_emissive_material == material_type);
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_is_in_shadow(const rt_world_t*           world,
-                            rt_hit_ext_info_t*          hit_info,
-                            rt_float_t                  nearest_z,
-                            rt_float_t                  farthest_z,
-                            rt_idx_t*                   shadow_light_index,
-                            enum rt_light_type*         shadow_light_type,
-                            rt_idx_t                    max_shadow_lights)
+typedef struct
 {
+    const rt_world_t*       world;
+    rt_hit_ext_info_t*      hit_info;
+    rt_vec2_t               range_z;
+    rt_idx_t*               shadow_light_index;
+    rt_light_type_t*        shadow_light_type;
+    rt_idx_t                max_shadow_lights;
+}
+rt_is_in_shadow_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_is_in_shadow(const rt_is_in_shadow_params_t* params)
+{
+    RT_ASSERT(params                != NULL);
+
+    const rt_world_t* world             = params->world;
+    rt_hit_ext_info_t* hit_info         = params->hit_info;
+    rt_vec2_t range_z                   = params->range_z;
+    rt_idx_t* shadow_light_index        = params->shadow_light_index;
+    rt_light_type_t* shadow_light_type  = params->shadow_light_type;
+    rt_idx_t max_shadow_lights          = params->max_shadow_lights;
+
+    rt_float_t nearest_z             = range_z.x;
+    rt_float_t farthest_z            = range_z.y;
+
     RT_ASSERT(world                 != NULL);
     RT_ASSERT(hit_info              != NULL);
     RT_ASSERT(nearest_z             <= farthest_z);
@@ -3233,8 +3369,8 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
 
     for (rt_idx_t i = 0; i < directional_light_count; ++i) {
 
-        const rt_directional_light_t* light = &directional_lights[i];
-        RT_ASSERT(light != NULL);
+        const rt_directional_light_t* light     = &directional_lights[i];
+        RT_ASSERT(light                        != NULL);
 
         if (!light->casts_shadows) {
             continue;
@@ -3243,23 +3379,28 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
         rt_ray_t new_ray = {
 
             .org = rt_vec4_sub(hit_info->info.position,
-                               rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS)),
+                               rt_vec4_mul_scalar(hit_info->info.normal,
+                                                  RT_SHADOW_BIAS)),
 
             .dir = rt_vec4_norm(rt_vec4_negate(light->direction)),
 
         };
 
-        if (rt_world_any_closest_hit(world,
-                                     new_ray,
-                                     nearest_z,
-                                     farthest_z,
-                                     hit_info,
-                                     RT_FACE_cull_null)) {
+        rt_world_any_closest_hit_params_t hit_params = {
+            .world          = world,
+            .ray            = new_ray,
+            .range_z        = range_z,
+            .info           = hit_info,
+            .face_cull_mode = RT_FACE_cull_null,
+        };
+
+        if (rt_world_any_closest_hit(&hit_params)) {
 
             bool should_be_in_shadow = rt_should_be_in_shadow(world,
                                                               hit_info);
 
-            if (should_be_in_shadow && shadow_light_cnt < max_shadow_lights) {
+            if (should_be_in_shadow &&
+                shadow_light_cnt < max_shadow_lights) {
 
                 shadow_light_index[shadow_light_cnt]   = i;
                 shadow_light_type[shadow_light_cnt]    = RT_LIGHT_directional_light;
@@ -3274,15 +3415,16 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
 
     for (rt_idx_t i = 0; i < point_light_count; ++i) {
 
-        const rt_point_light_t* light = &point_lights[i];
-        RT_ASSERT(light != NULL);
+        const rt_point_light_t* light       = &point_lights[i];
+        RT_ASSERT(light                    != NULL);
 
         if (!light->casts_shadows) {
             continue;
         }
 
         rt_vec4_t org = rt_vec4_sub(hit_info->info.position,
-                                    rt_vec4_mul_scalar(hit_info->info.normal, RT_SHADOW_BIAS));
+                                    rt_vec4_mul_scalar(hit_info->info.normal,
+                                                       RT_SHADOW_BIAS));
 
         rt_ray_t new_ray = {
             .org = org,
@@ -3292,12 +3434,15 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
         rt_float_t new_nearest_z  = RT_SHADOW_BIAS;
         rt_float_t new_farthest_z = rt_vec4_dist(org, light->position) - RT_SHADOW_BIAS;
 
-        if (rt_world_any_closest_hit(world,
-                                     new_ray,
-                                     new_nearest_z,
-                                     new_farthest_z,
-                                     hit_info,
-                                     RT_FACE_cull_null)) {
+        rt_world_any_closest_hit_params_t hit_params = {
+            .world              = world,
+            .ray                = new_ray,
+            .range_z            = { new_nearest_z, new_farthest_z },
+            .info               = hit_info,
+            .face_cull_mode     = RT_FACE_cull_null,
+        };
+
+        if (rt_world_any_closest_hit(&hit_params)) {
 
             bool should_be_in_shadow = rt_should_be_in_shadow(world,
                                                               hit_info);
@@ -3324,9 +3469,9 @@ RT_API void rt_is_in_shadow(const rt_world_t*           world,
 RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
                                             rt_ray_t            ray)
 {
-    RT_ASSERT(world != NULL);
+    RT_ASSERT(world                    != NULL);
 
-    rt_idx_t dir_light_count = world->directional_light_count;
+    rt_idx_t dir_light_count            = world->directional_light_count;
 
     if (!dir_light_count) {
 
@@ -3334,97 +3479,122 @@ RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
 
     }
 
-    rt_vec4_t total_scattered_light = {};
+    rt_vec4_t total_scattered_light     = {};
 
     for (rt_idx_t i = 0; i < dir_light_count; ++i) {
 
-        rt_directional_light_t* light = &world->directional_light_buffer[i];
-        RT_ASSERT(light != NULL);
+        rt_directional_light_t* light   = &world->directional_light_buffer[i];
+        RT_ASSERT(light                != NULL);
 
-        rt_vec4_t direction = rt_vec4_norm(rt_vec4_negate(light->direction));
+        rt_vec4_t direction             = rt_vec4_norm(rt_vec4_negate(light->direction));
+        rt_vec4_t irradiance            = rt_vec4_mul_scalar(light->color,
+                                                             light->intensity);
 
-        rt_vec4_t scattered_light = rt_atmosphere_scatter(&world->atmosphere,
-                                                          ray,
-                                                          rt_vec4_mul_scalar(light->color,
-                                                                             light->intensity),
-                                                          light->direction);
+        rt_vec4_t scattered_light       = rt_atmosphere_scatter(&world->atmosphere,
+                                                                ray,
+                                                                irradiance,
+                                                                light->direction);
 
-        rt_float_t disc_factor = RT_FLOAT(1.0) - light->radius;
+        rt_float_t disc_factor          = RT_FLOAT(1.0) - light->radius;
 
         if (fmax(rt_vec4_dot(ray.dir, direction), RT_FLOAT(0.0)) > disc_factor) {
 
-            total_scattered_light = rt_vec4_mul_scalar(scattered_light,
-                                                       light->intensity);
+            total_scattered_light       = rt_vec4_mul_scalar(scattered_light,
+                                                             light->intensity);
         }
         
-        total_scattered_light = rt_vec4_add(total_scattered_light,
-                                            scattered_light);
+        total_scattered_light           = rt_vec4_add(total_scattered_light,
+                                                      scattered_light);
     }
 
     return total_scattered_light;
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
-                                        rt_ray_t                ray,
-                                        rt_float_t              nearest_z,
-                                        rt_float_t              farthest_z,
-                                        rt_idx_t                depth)
+typedef struct
 {
+    const rt_world_t*   world;
+    rt_ray_t            ray;
+    rt_vec2_t           range_z;
+    rt_idx_t            depth;
+}
+rt_world_compute_color_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* params)
+{
+    RT_ASSERT(params    != NULL);
+
+    const rt_world_t* world     = params->world;
+    rt_ray_t ray                = params->ray;
+    rt_vec2_t range_z           = params->range_z;
+    rt_idx_t depth              = params->depth;
+
+    rt_float_t nearest_z        = range_z.x;
+    rt_float_t farthest_z       = range_z.y;
+
     RT_ASSERT(world     != NULL);
     RT_ASSERT(nearest_z <= farthest_z);
     RT_ASSERT(depth     >= 0);
 
     rt_hit_ext_info_t hit_info = {};
 
-    if (!rt_world_any_closest_hit(world,
-                                  ray,
-                                  nearest_z,
-                                  farthest_z,
-                                  &hit_info,
-                                  world->face_cull_mode)) {
+    rt_world_any_closest_hit_params_t hit_params = {
+        .world          = world,
+        .ray            = ray,
+        .range_z        = range_z,
+        .info           = &hit_info,
+        .face_cull_mode = world->face_cull_mode,
+    };
+
+    if (!rt_world_any_closest_hit(&hit_params)) {
 
         return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
                                 world->clear_color);
     }
 
-    enum rt_material_type material_type     = RT_MATERIAL_TYPE_null_material;
+    rt_material_type_t material_type        = RT_MATERIAL_TYPE_null_material;
     rt_idx_t material_index                 = 0;
 
-    enum rt_hit_geometry_type geometry_type = hit_info.geometry_type;
+    rt_hit_geometry_type_t geometry_type    = hit_info.geometry_type;
     RT_ASSERT(geometry_type                != RT_HIT_null);
 
     rt_idx_t geometry_index                 = hit_info.geometry_index;
     RT_ASSERT(geometry_index               >= 0);
 
     switch (geometry_type) {
+
         case RT_HIT_sphere:
 
-            RT_ASSERT(world->sphere_buffer != NULL);
+            RT_ASSERT(world->sphere_buffer  != NULL);
 
             material_type   = world->sphere_buffer[geometry_index].material_type;
             material_index  = world->sphere_buffer[geometry_index].material_index;
 
             break;
+
         case RT_HIT_plane:
 
-            RT_ASSERT(world->plane_buffer != NULL);
+            RT_ASSERT(world->plane_buffer   != NULL);
 
             material_type   = world->plane_buffer[geometry_index].material_type;
             material_index  = world->plane_buffer[geometry_index].material_index;
 
             break;
+
         case RT_HIT_aabb:
 
-            RT_ASSERT(world->aabb_buffer != NULL);
+            RT_ASSERT(world->aabb_buffer    != NULL);
 
             material_type   = world->aabb_buffer[geometry_index].material_type;
             material_index  = world->aabb_buffer[geometry_index].material_index;
 
             break;
+
         default:
             RT_ASSERT(0 && "Unhandled geometry type!");
             break;
+
     }
 
     if (RT_MATERIAL_TYPE_null_material == material_type) {
@@ -3433,18 +3603,21 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
                                 world->clear_color);
     }
 
-    rt_hit_ext_info_t hit_info_copy = hit_info;;
+    rt_hit_ext_info_t hit_info_copy = hit_info;
 
     rt_idx_t shadow_lights[RT_MAX_SHADOW_LIGHTS]                    = {};
-    enum rt_light_type shadow_light_types[RT_MAX_SHADOW_LIGHTS]     = {};
+    rt_light_type_t shadow_light_types[RT_MAX_SHADOW_LIGHTS]        = {};
 
-    rt_is_in_shadow(world,
-                    &hit_info_copy,
-                    nearest_z,
-                    farthest_z,
-                    shadow_lights,
-                    shadow_light_types,
-                    RT_MAX_SHADOW_LIGHTS);
+    rt_is_in_shadow_params_t in_shadow_params = {
+        .world                  = world,
+        .hit_info               = &hit_info_copy,
+        .range_z                = range_z,
+        .shadow_light_index     = shadow_lights,
+        .shadow_light_type      = shadow_light_types,
+        .max_shadow_lights      = RT_MAX_SHADOW_LIGHTS,
+    };
+
+    rt_is_in_shadow(&in_shadow_params);
 
     switch (material_type) {
 
@@ -3458,23 +3631,31 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 
             rt_checkerboard_material_t* m = &world->checkerboard_material_buffer[material_index];
 
-            return rt_fragment_shader_checkerboard(&hit_info.info,
-                                                   m,
-                                                   world,
-                                                   shadow_lights,
-                                                   shadow_light_types,
-                                                   RT_MAX_SHADOW_LIGHTS);
+            rt_fragment_shader_checkerboard_params_t checkerboard_params = {
+                .hit_info               = &hit_info.info,
+                .material               = m,
+                .world                  = world,
+                .shadow_lights          = shadow_lights,
+                .shadow_light_types     = shadow_light_types,
+                .shadow_light_count     = RT_MAX_SHADOW_LIGHTS,
+            };
+
+            return rt_fragment_shader_checkerboard(&checkerboard_params);
         }
         case RT_MATERIAL_TYPE_diffuse_material: {
 
             rt_diffuse_material_t* m = &world->diffuse_material_buffer[material_index];
 
-            return rt_fragment_shader_diffuse(&hit_info.info,
-                                              m,
-                                              world,
-                                              shadow_lights,
-                                              shadow_light_types,
-                                              RT_MAX_SHADOW_LIGHTS);
+            rt_fragment_shader_diffuse_params_t diffuse_params = {
+                .hit_info               = &hit_info.info,
+                .material               = m,
+                .world                  = world,
+                .shadow_lights          = shadow_lights,
+                .shadow_light_types     = shadow_light_types,
+                .shadow_light_count     = RT_MAX_SHADOW_LIGHTS,
+            };
+
+            return rt_fragment_shader_diffuse(&diffuse_params);
         }
         case RT_MATERIAL_TYPE_metallic_material: {
 
@@ -3488,20 +3669,27 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
             rt_ray_t reflected_ray = { .org = reflected_ray_pos,
                                        .dir = rt_vec4_norm(reflected_ray_dir) };
 
-            rt_vec4_t reflected_color = rt_world_compute_color(world,
-                                                               reflected_ray,
-                                                               nearest_z,
-                                                               farthest_z,
-                                                               depth - 1);
+            rt_world_compute_color_params_t color_params = {
+                .world      = world,
+                .ray        = reflected_ray,
+                .range_z    = range_z,
+                .depth      = depth - 1,
+            };
+
+            rt_vec4_t reflected_color = rt_world_compute_color(&color_params);
 
             rt_metallic_material_t* m = &world->metallic_material_buffer[material_index];
 
-            rt_vec4_t fragment_shader_output =  rt_fragment_shader_metallic(&hit_info.info,
-                                                                            m,
-                                                                            world,
-                                                                            shadow_lights,
-                                                                            shadow_light_types,
-                                                                            RT_MAX_SHADOW_LIGHTS);
+            rt_fragment_shader_metallic_params_t metallic_params = {
+                .hit_info               = &hit_info.info,
+                .material               = m,
+                .world                  = world,
+                .shadow_lights          = shadow_lights,
+                .shadow_light_types     = shadow_light_types,
+                .shadow_light_count     = RT_MAX_SHADOW_LIGHTS,
+            };
+
+            rt_vec4_t fragment_shader_output =  rt_fragment_shader_metallic(&metallic_params);
 
             return rt_vec4_mul(reflected_color, fragment_shader_output);
         }
@@ -3521,9 +3709,9 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_t*       world,
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
-    uint32_t* rgb_buffer;
-    uint32_t width;
-    uint32_t height;
+    uint32_t*   rgb_buffer;
+    uint32_t    width;
+    uint32_t    height;
 }
 rt_framebuffer_t;
 
@@ -3534,11 +3722,12 @@ RT_API rt_status_t rt_framebuffer_create(uint32_t               width,
 {
     RT_ASSERT(width         > 0);
     RT_ASSERT(height        > 0);
-    RT_ASSERT(framebuffer   != NULL);
+    RT_ASSERT(framebuffer  != NULL);
 
     framebuffer->rgb_buffer = (uint32_t*)RT_ALLOC(width *
                                                   height *
                                                   sizeof(uint32_t));
+
     if (!framebuffer->rgb_buffer) {
         return RT_STATUS_failure;
     }
@@ -3586,8 +3775,8 @@ RT_API void rt_framebuffer_write(uint32_t               row,
     RT_ASSERT(row            < framebuffer->height);
     RT_ASSERT(col            < framebuffer->width);
 
-    uint32_t index = row * framebuffer->width + col;
-    framebuffer->rgb_buffer[index] = rt_vec4_to_uint32_alpha(color, RT_FLOAT(1.0));
+    uint32_t index                  = row * framebuffer->width + col;
+    framebuffer->rgb_buffer[index]  = rt_vec4_to_uint32_alpha(color, RT_FLOAT(1.0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -3629,22 +3818,27 @@ RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
     RT_ASSERT(col_multiplier != NULL);
 
     switch (blitter) {
+
         case NCBLIT_1x1:
             *row_multiplier = 1;
             *col_multiplier = 1;
             break;
+
         case NCBLIT_2x1:
             *row_multiplier = 2;
             *col_multiplier = 1;
             break;
+
         case NCBLIT_2x2:
             *row_multiplier = 2;
             *col_multiplier = 2;
             break;
+
         case NCBLIT_3x2:
             *row_multiplier = 3;
             *col_multiplier = 2;
             break;
+
         default:
             *row_multiplier = 1;
             *col_multiplier = 1;
@@ -3653,13 +3847,13 @@ RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane* ncplane,
-                                                          ncblitter_e blitter)
+RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane*   ncplane,
+                                                          ncblitter_e       blitter)
 {
-    RT_ASSERT(ncplane != NULL);
+    RT_ASSERT(ncplane      != NULL);
 
     rt_notcurses_surface_t surface = {};
-    surface.render_surface = ncplane;
+    surface.render_surface  = ncplane;
 
     ncplane_dim_yx(ncplane, &surface.rows, &surface.cols);
 
@@ -3746,24 +3940,25 @@ RT_API void rt_notcurses_surface_blit_ascii_colored
     uint32_t                        ascii_characters_len
 )
 {
-    uint32_t width = framebuffer->width;
+    uint32_t width  = framebuffer->width;
     uint32_t height = framebuffer->height;
 
     for (uint32_t i = 0; i < width; ++i) {
+
         for (uint32_t j = 0; j < height; ++j) {
 
-            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+            uint32_t pixel  = framebuffer->rgb_buffer[j * width + i];
 
             uint32_t red    = (uint32_t)(uint8_t)(pixel >> 0);
             uint32_t green  = (uint32_t)(uint8_t)(pixel >> 8);
             uint32_t blue   = (uint32_t)(uint8_t)(pixel >> 16);
 
-            rt_float_t r = (rt_float_t)red      / RT_FLOAT(255.99);
-            rt_float_t g = (rt_float_t)green    / RT_FLOAT(255.99);
-            rt_float_t b = (rt_float_t)blue     / RT_FLOAT(255.99);
+            rt_float_t r    = (rt_float_t)red      / RT_FLOAT(255.99);
+            rt_float_t g    = (rt_float_t)green    / RT_FLOAT(255.99);
+            rt_float_t b    = (rt_float_t)blue     / RT_FLOAT(255.99);
 
-            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+            rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
 
             struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
             nccell_load_char(surface->render_surface,
@@ -3790,20 +3985,21 @@ RT_API void rt_notcurses_surface_blit_ascii_monochrome
     uint32_t                         ascii_characters_len
 )
 {
-    uint32_t width = framebuffer->width;
-    uint32_t height = framebuffer->height;
+    uint32_t width      = framebuffer->width;
+    uint32_t height     = framebuffer->height;
 
     for (uint32_t i = 0; i < width; ++i) {
+
         for (uint32_t j = 0; j < height; ++j) {
 
-            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+            uint32_t pixel  = framebuffer->rgb_buffer[j * width + i];
 
-            rt_float_t r = (rt_float_t)((uint8_t)(pixel >> 0))  / RT_FLOAT(255.99);
-            rt_float_t g = (rt_float_t)((uint8_t)(pixel >> 8))  / RT_FLOAT(255.99);
-            rt_float_t b = (rt_float_t)((uint8_t)(pixel >> 16)) / RT_FLOAT(255.99);
+            rt_float_t r    = (rt_float_t)((uint8_t)(pixel >> 0))  / RT_FLOAT(255.99);
+            rt_float_t g    = (rt_float_t)((uint8_t)(pixel >> 8))  / RT_FLOAT(255.99);
+            rt_float_t b    = (rt_float_t)((uint8_t)(pixel >> 16)) / RT_FLOAT(255.99);
 
-            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind = (uint32_t)(avg * (rt_float_t)(ascii_characters_len));
+            rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)(ascii_characters_len));
 
             ncplane_putchar_yx(surface->render_surface,
                               (int32_t)j,
@@ -3822,24 +4018,25 @@ RT_API void rt_notcurses_surface_blit_ascii_matrix
     uint32_t                         ascii_characters_len
 )
 {
-    uint32_t width = framebuffer->width;
-    uint32_t height = framebuffer->height;
+    uint32_t width      = framebuffer->width;
+    uint32_t height     = framebuffer->height;
 
     for (uint32_t i = 0; i < width; ++i) {
+
         for (uint32_t j = 0; j < height; ++j) {
 
-            uint32_t pixel = framebuffer->rgb_buffer[j * width + i];
+            uint32_t pixel  = framebuffer->rgb_buffer[j * width + i];
 
             uint32_t red    = (uint32_t)(uint8_t)(pixel >> 0);
             uint32_t green  = (uint32_t)(uint8_t)(pixel >> 8);
             uint32_t blue   = (uint32_t)(uint8_t)(pixel >> 16);
 
-            rt_float_t r = (rt_float_t)red      / RT_FLOAT(255.99);
-            rt_float_t g = (rt_float_t)green    / RT_FLOAT(255.99);
-            rt_float_t b = (rt_float_t)blue     / RT_FLOAT(255.99);
+            rt_float_t r    = (rt_float_t)red      / RT_FLOAT(255.99);
+            rt_float_t g    = (rt_float_t)green    / RT_FLOAT(255.99);
+            rt_float_t b    = (rt_float_t)blue     / RT_FLOAT(255.99);
 
-            rt_float_t avg = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+            rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
 
             struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
             nccell_load_char(surface->render_surface,
@@ -3861,45 +4058,53 @@ RT_API void rt_notcurses_surface_blit_ascii_matrix
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
-                                      const rt_framebuffer_t*       framebuffer)
+                                      const rt_framebuffer_t*       framebuffer,
+                                      const char*                   ascii_characters,
+                                      uint32_t                      ascii_characters_len)
 {
     RT_ASSERT(surface      != NULL);
     RT_ASSERT(framebuffer  != NULL);
-
-    static char ascii_characters[] = " .,-~:;=!*#$@";
-    uint32_t ascii_characters_len = sizeof(ascii_characters) - 1;
 
     switch (surface->blitter) {
         case NCBLIT_1x1:
         case NCBLIT_2x1:
         case NCBLIT_2x2:
         case NCBLIT_3x2:
+
             RT_ASSERT(-1 != ncblit_rgba(framebuffer->rgb_buffer,
                                         (int32_t)(surface->cols * sizeof(uint32_t)),
                                         &surface->visual_options));
             break;
+
         case NCBLIT_4x1: {
+
             rt_notcurses_surface_blit_ascii_colored(surface,
                                                    framebuffer,
                                                    ascii_characters,
                                                    ascii_characters_len);
             break;
+
         }
         case NCBLIT_4x2: {
+
             rt_notcurses_surface_blit_ascii_monochrome(surface,
                                                        framebuffer,
                                                        ascii_characters,
                                                        ascii_characters_len);
             break;
+
         }
         case NCBLIT_8x1: {
+
             rt_notcurses_surface_blit_ascii_matrix(surface,
                                                    framebuffer,
                                                    ascii_characters,
                                                    ascii_characters_len);
             break;
+
         }
         default:
+            assert(false && "rt_notcurses_surface_blit: unknown blitter");
             break;
     }
 }
@@ -4327,11 +4532,14 @@ RT_API void rt_fps_camera_render(rt_fps_camera_render_params_t* params)
                 .org = camera->position,
             };
 
-            rt_vec4_t hdr_color = rt_world_compute_color(world,
-                                                         r,
-                                                         camera->near,
-                                                         camera->far,
-                                                         camera->depth);
+            rt_world_compute_color_params_t compute_color_params = {
+                .world      = world,
+                .ray        = r,
+                .range_z    = { camera->near, camera->far },
+                .depth      = camera->depth,
+            };
+
+            rt_vec4_t hdr_color = rt_world_compute_color(&compute_color_params);
 
             hdr_color_avg_accum += (hdr_color.x + hdr_color.y + hdr_color.z);;
 
@@ -4406,12 +4614,28 @@ RT_API rt_fps_camera_notcurses_keybindings_t rt_fps_camera_notcurses_default_key
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_fps_camera_update_with_notcurses(rt_fps_camera_t*                                camera,
-                                                rt_float_t                                      delta_time,
-                                                const rt_fps_camera_notcurses_keybindings_t*    keybindings,
-                                                struct notcurses*                               nc,
-                                                bool*                                           is_running)
+typedef struct
 {
+    rt_fps_camera_t*                                camera;
+    rt_float_t                                      delta_time;
+    const rt_fps_camera_notcurses_keybindings_t*    keybindings;
+    struct notcurses*                               nc;
+    bool*                                           is_running;
+}
+rt_fps_camera_update_with_notcurses_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_fps_camera_update_with_notcurses
+(const rt_fps_camera_update_with_notcurses_params_t* params)
+{
+    RT_ASSERT(params      != NULL);
+
+    rt_fps_camera_t* camera                                     = params->camera;
+    rt_float_t delta_time                                       = params->delta_time;
+    const rt_fps_camera_notcurses_keybindings_t* keybindings    = params->keybindings;
+    struct notcurses* nc                                        = params->nc;
+    bool* is_running                                            = params->is_running;
+
     RT_ASSERT(camera      != NULL);
     RT_ASSERT(keybindings != NULL);
     RT_ASSERT(nc          != NULL);
@@ -4423,130 +4647,171 @@ RT_API void rt_fps_camera_update_with_notcurses(rt_fps_camera_t*                
     while ((input_id = notcurses_get_nblock(nc, &input))) {
 
         if (input.id == keybindings->quit_key && input.evtype == NCTYPE_RELEASE) {
+
             *is_running = false;
             return;
         }
 
         if (input.id == keybindings->forward_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_forward(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_forward(camera);
                     break;
+
                 default:
                     break;
             }
         }
         else if (input.id == keybindings->backward_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_backward(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_backward(camera);
                     break;
+
                 default:
                     break;
             }
         }
 
         if (input.id == keybindings->left_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_left(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_left(camera);
                     break;
+
                 default:
                     break;
             }
         }
         else if (input.id == keybindings->right_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_right(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_right(camera);
                     break;
+
                 default:
                     break;
             }
         }
 
         if (input.id == keybindings->rotate_left_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_rotate_left(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_rotating_left(camera);
                     break;
+
                 default:
                     break;
             }
         }
         else if (input.id == keybindings->rotate_right_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_rotate_right(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_rotating_right(camera);
                     break;
+
                 default:
                     break;
             }
         }
 
         if (input.id == keybindings->rotate_down_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_rotate_down(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_rotating_down(camera);
                     break;
+
                 default:
                     break;
             }
         }
         else if (input.id == keybindings->rotate_up_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_rotate_up(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_rotating_up(camera);
                     break;
+
                 default:
                     break;
             }
         }
 
         if (input.id == keybindings->up_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_up(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_up(camera);
                     break;
+
                 default:
                     break;
             }
         }
         else if (input.id == keybindings->down_key) {
+
             switch (input.evtype) {
+
                 case NCTYPE_PRESS:
                     rt_fps_camera_move_down(camera, delta_time);
                     break;
+
                 case NCTYPE_RELEASE:
                     rt_fps_camera_stop_moving_down(camera);
                     break;
+
                 default:
                     break;
             }
@@ -4586,10 +4851,11 @@ typedef struct
 rt_sdl3_gamepad_info_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API rt_fps_camera_sdl3_joystick_keybindings_t rt_fps_camera_sdl3_default_joystick_keybindings(void)
+RT_API rt_fps_camera_sdl3_joystick_keybindings_t
+rt_fps_camera_sdl3_default_joystick_keybindings(void)
 {
     rt_fps_camera_sdl3_joystick_keybindings_t keybindings = {
-        
+
         .quit_button                = SDL_GAMEPAD_BUTTON_START,
 
         .horizontal_movement_axis   = SDL_GAMEPAD_AXIS_LEFTX,
