@@ -256,7 +256,7 @@ int main(void)
                      RT_FLOAT(0.05),
                      RT_FLOAT(1.0), },
 
-        .ambient_factor     = RT_FLOAT(0.001),
+        .ambient_factor     = RT_FLOAT(0.1),
 
         .receives_shadows   = true,
     };
@@ -280,7 +280,7 @@ int main(void)
     rt_sphere_params_t reflective_sphere_params = {
 
         .center = { RT_FLOAT( -10.0),
-                    RT_FLOAT( 1.0),
+                    RT_FLOAT( 2.0),
                     RT_FLOAT(-10.0),
                     RT_FLOAT( 1.0), },
 
@@ -330,7 +330,7 @@ int main(void)
     rt_sphere_params_t diffuse_sphere_params = {
 
         .center = { RT_FLOAT( 10.0),
-                    RT_FLOAT( 0.5),
+                    RT_FLOAT( 2.0),
                     RT_FLOAT(-10.0),
                     RT_FLOAT( 1.0), },
 
@@ -348,8 +348,8 @@ int main(void)
 
     rt_diffuse_material_t diffuse_mat_params = {
 
-        .ambient = { RT_FLOAT(0.0025),
-                     RT_FLOAT(0.005),
+        .ambient = { RT_FLOAT(0.01),
+                     RT_FLOAT(0.01),
                      RT_FLOAT(0.01),
                      RT_FLOAT(1.0), },
 
@@ -370,10 +370,62 @@ int main(void)
                                     diffuse_sphere_material_index);
 
     ///////////////////////////////////////////////////////////////////////////
+    /////////////// DIELECTRIC SPHERE GEOMETRY & MATERIAL /////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+
+    rt_idx_t dielectric_sphere_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_sphere(&app.world,
+                                                        &dielectric_sphere_index));
+
+    rt_sphere_params_t dielectric_sphere_params = {
+
+        .center = { RT_FLOAT(-30.0),
+                    RT_FLOAT( 2.0),
+                    RT_FLOAT(-10.0),
+                    RT_FLOAT(1.0) },
+
+        .radius = RT_FLOAT(6.0),
+    };
+
+    rt_world_set_sphere_params(&app.world,
+                               dielectric_sphere_index,
+                               &dielectric_sphere_params);
+
+    rt_idx_t dielectric_sphere_material_index = 0;
+    RT_ASSERT(RT_STATUS_success == rt_world_push_dielectric_material(&app.world,
+                                                                     &dielectric_sphere_material_index));
+
+    rt_dielectric_material_t dielectric_mat_params = {
+
+        .ambient = { RT_FLOAT(0.01),
+                     RT_FLOAT(0.01),
+                     RT_FLOAT(0.01),
+                     RT_FLOAT(1.00) },
+
+        .specular = { RT_FLOAT(1.0),
+                      RT_FLOAT(1.0),
+                      RT_FLOAT(0.5),
+                      RT_FLOAT(1.0) },
+
+        .refractive_index = RT_FLOAT(1.1),
+
+        .receives_shadows = true,
+    };
+
+    rt_world_set_dielectric_material_params(&app.world,
+                                            dielectric_sphere_material_index,
+                                            &dielectric_mat_params);
+
+    rt_sphere_link_dielectric_material(&app.world,
+                                       dielectric_sphere_index,
+                                       dielectric_sphere_material_index);
+
+    ///////////////////////////////////////////////////////////////////////////
     //////////////////////////////// CAMERA ///////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
 
     rt_fps_camera_t fps_camera      = rt_fps_camera_create();
+
     fps_camera.position             = (rt_vec4_t){ RT_FLOAT( 0.0),
                                                    RT_FLOAT( 2.0),
                                                    RT_FLOAT( 9.0),
@@ -386,14 +438,12 @@ int main(void)
     callbacks.userPtr = &app;
     callbacks.event_gamepad_button_down = gamepad_down_callback;
 
-
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// RENDER LOOP ///////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
 
     bool is_running         = true;
     rt_timer_t timer        = {};
-    rt_float_t total_time   = RT_FLOAT(0.0);
 
     char ascii_characters[]         = " .,-~:;=!*#$@";
     uint32_t ascii_characters_len   = sizeof(ascii_characters) - 1;
@@ -404,10 +454,9 @@ int main(void)
                                     &app.framebuffer);
 
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
-        total_time += delta_time;
 
         rt_vec4_t yellow_sun_dir = { RT_FLOAT( 0.0),
-                                     RT_FLOAT(-1.0),
+                                     RT_FLOAT(-0.1),
                                      RT_FLOAT(-1.0),
                                      RT_FLOAT( 0.0), };
 
@@ -432,10 +481,6 @@ int main(void)
         rt_world_set_directional_light_params(&app.world,
                                               yellow_sun_index,
                                               &yellow_sun_params);
-
-        diffuse_mat_params.diffuse.x = (sinf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
-        diffuse_mat_params.diffuse.y = (cosf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
-        diffuse_mat_params.diffuse.z = (sinf(total_time) + RT_FLOAT(1.0)) * RT_FLOAT(0.5);
 
         rt_world_set_diffuse_material_params(&app.world,
                                              diffuse_sphere_material_index,

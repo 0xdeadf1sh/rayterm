@@ -694,7 +694,7 @@ RT_API rt_vec2_t rt_vec2_refract(rt_vec2_t  p,
                                  rt_float_t k)
 {
     rt_vec2_t pnegated      = rt_vec2_negate(p);
-    rt_float_t cos_theta    = fmin(RT_FLOAT(1.0), rt_vec2_dot(pnegated, n));
+    rt_float_t cos_theta    = fmax(RT_FLOAT(-1.0), fmin(RT_FLOAT(1.0), rt_vec2_dot(pnegated, n)));
     rt_vec2_t perpendicular = rt_vec2_mul_scalar(rt_vec2_add(p,
                                                              rt_vec2_mul_scalar(n,
                                                                                 cos_theta)),
@@ -1051,7 +1051,7 @@ RT_API rt_vec3_t rt_vec3_refract(rt_vec3_t  p,
                                  rt_float_t k)
 {
     rt_vec3_t pnegated      = rt_vec3_negate(p);
-    rt_float_t cos_theta    = fmin(RT_FLOAT(1.0), rt_vec3_dot(pnegated, n));
+    rt_float_t cos_theta    = fmax(RT_FLOAT(-1.0), fmin(RT_FLOAT(1.0), rt_vec3_dot(pnegated, n)));
     rt_vec3_t perpendicular = rt_vec3_mul_scalar(rt_vec3_add(p,
                                                              rt_vec3_mul_scalar(n,
                                                                                 cos_theta)),
@@ -1515,7 +1515,7 @@ RT_API rt_vec4_t rt_vec4_refract(rt_vec4_t      p,
                                  rt_float_t     k)
 {
     rt_vec4_t pnegated      = rt_vec4_negate(p);
-    rt_float_t cos_theta    = fmin(RT_FLOAT(1.0), rt_vec4_dot(pnegated, n));
+    rt_float_t cos_theta    = fmax(RT_FLOAT(-1.0), fmin(RT_FLOAT(1.0), rt_vec4_dot(pnegated, n)));
     rt_vec4_t perpendicular = rt_vec4_mul_scalar(rt_vec4_add(p,
                                                              rt_vec4_mul_scalar(n,
                                                                                 cos_theta)),
@@ -1597,6 +1597,35 @@ RT_API rt_vec4_t rt_vec4_rotate_z(rt_vec4_t     p,
 
     return p;
 }
+
+///////////////////////////////////////////////////////////////////////////
+///////////////////////// PREDEFINED COLORS ///////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+#define RT_COLOR_BLACK              (rt_vec4_t){ RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(1.0) }
+
+#define RT_COLOR_WHITE              (rt_vec4_t){ RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(1.0) }
+
+#define RT_COLOR_RED                (rt_vec4_t){ RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(1.0) }
+
+#define RT_COLOR_GREEN              (rt_vec4_t){ RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(1.0) }
+
+#define RT_COLOR_BLUE               (rt_vec4_t){ RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(0.0),          \
+                                                 RT_FLOAT(1.0),          \
+                                                 RT_FLOAT(1.0) }
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////////////////// MATERIALS ///////////////////////////////////
@@ -2766,13 +2795,16 @@ rt_world_any_closest_hit_params_t;
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_world_any_closest_hit(const rt_world_any_closest_hit_params_t* params)
 {
-    RT_ASSERT(params != NULL);
+    RT_ASSERT(params                   != NULL);
 
     const rt_world_t* world             = params->world;
     rt_ray_t ray                        = params->ray;
     rt_vec2_t range                     = params->range_z;
     rt_hit_ext_info_t* info             = params->info;
     rt_face_cull_mode_t face_cull_mode  = params->face_cull_mode;
+
+    RT_ASSERT(world                    != NULL);
+    RT_ASSERT(info                     != NULL);
 
     bool is_hit_bool_array[RT_HIT_count]            = {};
     rt_hit_ext_info_t hit_info_array[RT_HIT_count]  = {};
@@ -3535,7 +3567,6 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
 
     RT_ASSERT(world     != NULL);
     RT_ASSERT(nearest_z <= farthest_z);
-    RT_ASSERT(depth     >= 0);
 
     rt_hit_ext_info_t hit_info = {};
 
@@ -3547,7 +3578,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
         .face_cull_mode = world->face_cull_mode,
     };
 
-    if (!rt_world_any_closest_hit(&hit_params)) {
+    if (!rt_world_any_closest_hit(&hit_params) || depth < 1) {
 
         return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
                                 world->clear_color);
@@ -3624,12 +3655,14 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
         case RT_MATERIAL_TYPE_emissive_material: {
 
             rt_emissive_material_t* m = &world->emissive_material_buffer[material_index];
+            RT_ASSERT(m              != NULL);
 
             return rt_fragment_shader_emissive(m);
         }
         case RT_MATERIAL_TYPE_checkerboard_material: {
 
             rt_checkerboard_material_t* m = &world->checkerboard_material_buffer[material_index];
+            RT_ASSERT(m                  != NULL);
 
             rt_fragment_shader_checkerboard_params_t checkerboard_params = {
                 .hit_info               = &hit_info.info,
@@ -3645,6 +3678,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
         case RT_MATERIAL_TYPE_diffuse_material: {
 
             rt_diffuse_material_t* m = &world->diffuse_material_buffer[material_index];
+            RT_ASSERT(m             != NULL);
 
             rt_fragment_shader_diffuse_params_t diffuse_params = {
                 .hit_info               = &hit_info.info,
@@ -3679,6 +3713,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
             rt_vec4_t reflected_color = rt_world_compute_color(&color_params);
 
             rt_metallic_material_t* m = &world->metallic_material_buffer[material_index];
+            RT_ASSERT(m              != NULL);
 
             rt_fragment_shader_metallic_params_t metallic_params = {
                 .hit_info               = &hit_info.info,
@@ -3693,12 +3728,66 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
 
             return rt_vec4_mul(reflected_color, fragment_shader_output);
         }
-        /*
-        case RT_MATERIAL_DIELECTRIC: {
-            rt_dielectric_material_t* dielectric_material = &world->dielectric_materials[material_index];
-            return rt_fragment_shader_dielectric(&hit_info, dielectric_material, world->point_lights, world->point_light_count, false);
+        case RT_MATERIAL_TYPE_dielectric_material: {
+
+            rt_dielectric_material_t* m = &world->dielectric_material_buffer[material_index];
+            RT_ASSERT(m                != NULL);
+
+            rt_float_t eta = hit_info.info.is_front_facing
+                           ? (RT_FLOAT(1.0) / m->refractive_index)
+                           : m->refractive_index;
+
+            rt_vec4_t n = hit_info.info.is_front_facing
+                        ? hit_info.info.normal
+                        : rt_vec4_negate(hit_info.info.normal);
+
+            rt_vec4_t refracted_ray_dir = rt_vec4_norm(rt_vec4_refract(ray.dir,
+                                                                       n,
+                                                                       eta));
+
+            rt_ray_t refracted_ray = { .org = hit_info.info.position,
+                                       .dir = refracted_ray_dir };
+
+            rt_sphere_t current_sphere = world->sphere_buffer[geometry_index];
+
+            rt_hit_info_t sphere_hit_info = {};
+
+            rt_float_t diameter = current_sphere.geometry_params.radius * RT_FLOAT(2.0);
+
+            rt_vec2_t new_range = { .x = RT_SHADOW_BIAS,
+                                    .y = diameter + RT_SHADOW_BIAS };
+
+            if (rt_sphere_hit(current_sphere,
+                              refracted_ray,
+                              new_range,
+                              &sphere_hit_info)) {
+
+                rt_float_t eta2 = sphere_hit_info.is_front_facing
+                                ? (RT_FLOAT(1.0) / m->refractive_index)
+                                : m->refractive_index;
+
+                rt_vec4_t n2 = sphere_hit_info.is_front_facing
+                             ? sphere_hit_info.normal
+                             : rt_vec4_negate(sphere_hit_info.normal);
+
+                refracted_ray.dir = rt_vec4_norm(rt_vec4_refract(refracted_ray.dir,
+                                                                 n2,
+                                                                 eta2));
+
+                refracted_ray.org = sphere_hit_info.position;
+
+                rt_world_compute_color_params_t refracted_color_params = {
+                    .world      = world,
+                    .ray        = refracted_ray,
+                    .range_z    = range_z,
+                    .depth      = depth - 1,
+                };
+
+                return rt_world_compute_color(&refracted_color_params);
+            }
+
+            return RT_COLOR_BLUE;
         }
-        */
         default:
             RT_ASSERT(false && "Unhandled material type!");
             return rt_vec4_max_vec4(rt_world_compute_sky_color(world, ray),
@@ -4532,10 +4621,13 @@ RT_API void rt_fps_camera_render(rt_fps_camera_render_params_t* params)
                 .org = camera->position,
             };
 
+            rt_vec2_t camera_range = { .x = camera->near,
+                                       .y = camera->far };
+
             rt_world_compute_color_params_t compute_color_params = {
                 .world      = world,
                 .ray        = r,
-                .range_z    = { camera->near, camera->far },
+                .range_z    = camera_range,
                 .depth      = camera->depth,
             };
 
@@ -5114,14 +5206,6 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick
         }
     }
 }
-
-#endif
-
-///////////////////////////////////////////////////////////////////////////
-/////////////////////// SDL INPUT (FOR JOYSTICKS) /////////////////////////
-///////////////////////////////////////////////////////////////////////////
-
-#ifdef RT_USE_SDL3
 
 #endif
 
