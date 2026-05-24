@@ -107,6 +107,11 @@ typedef int32_t rt_idx_t;
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
+#ifndef RT_WORLD_ALLOCATOR_COUNT
+#define RT_WORLD_ALLOCATOR_COUNT 8
+#endif
+
+///////////////////////////////////////////////////////////////////////////
 //////////////////////////// ERROR CALLBACK ///////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 typedef void (*rt_error_callback_t)(const char*             filename,
@@ -181,10 +186,6 @@ RT_API void rt_set_error_callback(rt_error_callback_t   callback,
 #define RT_CONCAT2(A, B)                A ## B
 #define RT_CONCAT3(A, B, C)             A ## B ## C
 #define RT_CONCAT4(A, B, C, D)          A ## B ## C ## D
-
-///////////////////////////////////////////////////////////////////////////
-#define RT_ALLOC                        malloc
-#define RT_FREE                         free
 
 ///////////////////////////////////////////////////////////////////////////
 /////////////////////////////// UTILITIES /////////////////////////////////
@@ -400,6 +401,56 @@ RT_API rt_float_t rt_schlick_reflectance(rt_float_t cosine,
     r0 = r0 * r0;
 
     return r0 + (RT_FLOAT(1.0) - r0) * pow((RT_FLOAT(1.0) - cosine), RT_FLOAT(5.0));
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API size_t rt_next_power_of_two(size_t n)
+{
+    if (n == 0) {
+        return 1;
+    }
+
+    --n;
+
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+
+    if (sizeof(size_t) >= 4) {
+        n |= n >> 16;
+    }
+
+    if (sizeof(size_t) >= 8) {
+        n |= n >> 32;
+    }
+
+    return n + 1;
+}
+
+///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// MEMORY ///////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    void*   (*alloc)    (size_t size, size_t alignment);
+    void    (*free)     (void* ptr);
+}
+rt_allocator_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void* rt_allocator_alloc_default(size_t size,
+                                        size_t alignment)
+{
+    return aligned_alloc(alignment, size);
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_allocator_free_default(void* ptr)
+{
+    free(ptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2235,7 +2286,7 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////////// SKY ///////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
-    rt_vec4_t clear_color;
+    rt_vec4_t       clear_color;
     rt_atmosphere_t atmosphere;
 
     ///////////////////////////////////////////////////////////////////////////
@@ -2263,11 +2314,73 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
     ///////////////////////////////// STATE ///////////////////////////////////
     ///////////////////////////////////////////////////////////////////////////
+    rt_face_cull_mode_t face_cull_mode;
 
     ///////////////////////////////////////////////////////////////////////////
-    rt_face_cull_mode_t face_cull_mode;
+    //////////////////////////////// MEMORY ///////////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+    rt_allocator_t      allocators[RT_WORLD_ALLOCATOR_COUNT];
+    rt_idx_t            current_allocator_idx;
 }
 rt_world_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_status_t rt_world_push_allocator(rt_world_t*      world,
+                                           rt_allocator_t   allocator)
+{
+    RT_ASSERT(world != NULL);
+
+    rt_idx_t current_allocator_idx = world->current_allocator_idx;
+
+    if (current_allocator_idx >= RT_WORLD_ALLOCATOR_COUNT) {
+
+        return RT_STATUS_failure;
+    }
+
+    world->allocators[current_allocator_idx]    = allocator;
+    world->current_allocator_idx               += 1;
+
+    return RT_STATUS_success;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_status_t rt_world_pop_allocator(rt_world_t* world)
+{
+    RT_ASSERT(world != NULL);
+
+    rt_idx_t current_allocator_idx = world->current_allocator_idx;
+
+    if (current_allocator_idx <= 0) {
+
+        return RT_STATUS_failure;
+    }
+
+    world->current_allocator_idx -= 1;
+
+    return RT_STATUS_success;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_allocator_t rt_world_retrieve_active_allocator(const rt_world_t* world)
+{
+    RT_ASSERT(world != NULL);
+
+    rt_idx_t current_allocator_idx = world->current_allocator_idx;
+
+    if (current_allocator_idx <= 0) {
+
+        rt_allocator_t default_allocator = {
+
+            .alloc  = rt_allocator_alloc_default,
+            .free   = rt_allocator_free_default,
+
+        };
+
+        return default_allocator;
+    }
+
+    return world->allocators[current_allocator_idx - 1];
+}
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_WORLD_DEFINE_PUSH(OBJECT) [[nodiscard]]                          \
@@ -2294,8 +2407,13 @@ RT_API rt_status_t RT_CONCAT2(rt_world_push_, OBJECT)                       \
         rt_idx_t capacity_new = capacity ? 2 * capacity : RT_INIT_CAP;      \
         RT_ASSERT(capacity_new > capacity);                                 \
                                                                             \
+        rt_allocator_t alloc = rt_world_retrieve_active_allocator(world);   \
+                                                                            \
         size_t bytes_required = (size_t)capacity_new * sizeof(buffer_type); \
-        buffer_type* buffer_new = (buffer_type*)RT_ALLOC(bytes_required);   \
+        size_t alignment = rt_next_power_of_two(sizeof(buffer_type));       \
+                                                                            \
+        buffer_type* buffer_new = alloc.alloc(bytes_required,               \
+                                              alignment);                   \
                                                                             \
         if (!buffer_new) {                                                  \
             return RT_STATUS_failure;                                       \
@@ -2305,7 +2423,7 @@ RT_API rt_status_t RT_CONCAT2(rt_world_push_, OBJECT)                       \
             buffer_new[i] = buffer[i];                                      \
         }                                                                   \
                                                                             \
-        RT_FREE(buffer);                                                    \
+        alloc.free(buffer);                                                 \
                                                                             \
         world->RT_CONCAT2(OBJECT, _buffer)     = buffer_new;                \
         world->RT_CONCAT2(OBJECT, _capacity)   = capacity_new;              \
@@ -2359,8 +2477,13 @@ RT_API rt_status_t RT_CONCAT2(rt_world_reserve_, OBJECT)                    \
                                                                             \
     typedef RT_CONCAT3(rt_, OBJECT, _t) buffer_type;                        \
                                                                             \
+    rt_allocator_t alloc = rt_world_retrieve_active_allocator(world);       \
+                                                                            \
     size_t bytes_required   = (size_t)capacity * sizeof(buffer_type);       \
-    buffer_type* buffer_new = (buffer_type*)RT_ALLOC(bytes_required);       \
+    size_t alignment        = rt_next_power_of_two(sizeof(buffer_type));    \
+                                                                            \
+    buffer_type* buffer_new = alloc.alloc(bytes_required,                   \
+                                          alignment);                       \
                                                                             \
     if (!buffer_new) {                                                      \
         return RT_STATUS_failure;                                           \
@@ -2370,7 +2493,7 @@ RT_API rt_status_t RT_CONCAT2(rt_world_reserve_, OBJECT)                    \
         buffer_new[i] = world->RT_CONCAT2(OBJECT, _buffer)[i];              \
     }                                                                       \
                                                                             \
-    RT_FREE(world->RT_CONCAT2(OBJECT, _buffer));                            \
+    alloc.free(world->RT_CONCAT2(OBJECT, _buffer));                         \
                                                                             \
     world->RT_CONCAT2(OBJECT, _buffer)     = buffer_new;                    \
     world->RT_CONCAT2(OBJECT, _capacity)   = capacity;                      \
@@ -2383,7 +2506,10 @@ RT_API rt_status_t RT_CONCAT2(rt_world_reserve_, OBJECT)                    \
 RT_API void RT_CONCAT3(rt_world_free_, OBJECT, s)                           \
 (rt_world_t* world)                                                         \
 {                                                                           \
-    RT_FREE(world->RT_CONCAT2(OBJECT, _buffer));                            \
+    rt_allocator_t alloc = rt_world_retrieve_active_allocator(world);       \
+                                                                            \
+    alloc.free(world->RT_CONCAT2(OBJECT, _buffer));                         \
+                                                                            \
     world->RT_CONCAT2(OBJECT, _buffer)     = NULL;                          \
     world->RT_CONCAT2(OBJECT, _capacity)   = 0;                             \
     world->RT_CONCAT2(OBJECT, _count)      = 0;                             \
@@ -4005,15 +4131,17 @@ rt_framebuffer_t;
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_status_t rt_framebuffer_create(uint32_t               width,
                                          uint32_t               height,
-                                         rt_framebuffer_t*      framebuffer)
+                                         rt_framebuffer_t*      framebuffer,
+                                         rt_allocator_t         allocator)
 {
     RT_ASSERT(width         > 0);
     RT_ASSERT(height        > 0);
     RT_ASSERT(framebuffer  != NULL);
 
-    framebuffer->rgb_buffer = (uint32_t*)RT_ALLOC(width *
-                                                  height *
-                                                  sizeof(uint32_t));
+    size_t size         = (size_t)width * (size_t)height * sizeof(uint32_t);
+    size_t alignment    = rt_next_power_of_two(sizeof(uint32_t));
+
+    framebuffer->rgb_buffer = allocator.alloc(size, alignment);
 
     if (!framebuffer->rgb_buffer) {
         return RT_STATUS_failure;
@@ -4028,21 +4156,23 @@ RT_API rt_status_t rt_framebuffer_create(uint32_t               width,
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_status_t rt_framebuffer_resize(uint32_t               new_width,
                                          uint32_t               new_height,
-                                         rt_framebuffer_t*      framebuffer)
+                                         rt_framebuffer_t*      framebuffer,
+                                         rt_allocator_t         allocator)
 {
     RT_ASSERT(new_width     > 0);
     RT_ASSERT(new_height    > 0);
     RT_ASSERT(framebuffer   != NULL);
 
-    uint32_t* rgb_buffer    = (uint32_t*)RT_ALLOC(new_width *
-                                                  new_height *
-                                                  sizeof(uint32_t));
+    size_t size         = (size_t)new_width * (size_t)new_height * sizeof(uint32_t);
+    size_t alignment    = rt_next_power_of_two(sizeof(uint32_t));
+
+    uint32_t* rgb_buffer    = allocator.alloc(size, alignment);
 
     if (!rgb_buffer) {
         return RT_STATUS_failure;
     }
 
-    RT_FREE(framebuffer->rgb_buffer);
+    allocator.free(framebuffer->rgb_buffer);
 
     framebuffer->rgb_buffer = rgb_buffer;
 
@@ -4067,10 +4197,12 @@ RT_API void rt_framebuffer_write(uint32_t               row,
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_framebuffer_free(rt_framebuffer_t*       framebuffer)
+RT_API void rt_framebuffer_free(rt_framebuffer_t*       framebuffer,
+                                rt_allocator_t          allocator)
 {
     if (framebuffer->rgb_buffer) {
-        RT_FREE(framebuffer->rgb_buffer);
+
+        allocator.free(framebuffer->rgb_buffer);
         framebuffer->rgb_buffer = NULL;
     }
 }
@@ -4167,7 +4299,8 @@ RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane*   ncpl
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
-                                        rt_framebuffer_t*           framebuffer)
+                                        rt_framebuffer_t*           framebuffer,
+                                        rt_allocator_t              allocator)
 {
     RT_ASSERT(surface      != NULL);
     RT_ASSERT(framebuffer  != NULL);
@@ -4190,7 +4323,8 @@ RT_API void rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
 
         RT_ASSERT(RT_STATUS_success == rt_framebuffer_resize(new_cols,
                                                              new_rows,
-                                                             framebuffer));
+                                                             framebuffer,
+                                                             allocator));
 
         surface->visual_options.leny = new_rows;
         surface->visual_options.lenx = new_cols;
@@ -4203,7 +4337,8 @@ RT_API void rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surface,
                                                 rt_framebuffer_t*           framebuffer,
-                                                ncblitter_e                 blitter)
+                                                ncblitter_e                 blitter,
+                                                rt_allocator_t              allocator)
 {
     RT_ASSERT(surface       != NULL);
     RT_ASSERT(framebuffer   != NULL);
@@ -4215,7 +4350,7 @@ RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surf
         surface->visual_options.blitter     = blitter;
     }
 
-    rt_notcurses_surface_resize(surface, framebuffer);
+    rt_notcurses_surface_resize(surface, framebuffer, allocator);
 }
 
 ///////////////////////////////////////////////////////////////////////////

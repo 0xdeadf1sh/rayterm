@@ -54,7 +54,9 @@ static void app_destroy(app_state_t* state)
 {
     if (state) {
 
-        rt_framebuffer_free(&state->framebuffer);
+        rt_allocator_t world_allocator = rt_world_retrieve_active_allocator(&state->world);
+
+        rt_framebuffer_free(&state->framebuffer, world_allocator);
         rt_world_free(&state->world);
 
         if (state->nc) {
@@ -190,9 +192,12 @@ int main(void)
     rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std,
                                                                            app.current_blitter);
 
+    rt_allocator_t world_allocator = rt_world_retrieve_active_allocator(&app.world);
+
     RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(notcurses_surface.cols,
                                                          notcurses_surface.rows,
-                                                         &app.framebuffer));
+                                                         &app.framebuffer,
+                                                         world_allocator));
 
     ///////////////////////////////////////////////////////////////////////////
     //////////////////////////// WORLD & ATMOSPHERE ///////////////////////////
@@ -455,7 +460,8 @@ int main(void)
     while (is_running) {
 
         rt_notcurses_surface_resize(&notcurses_surface,
-                                    &app.framebuffer);
+                                    &app.framebuffer,
+                                    world_allocator);
 
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
 
@@ -517,7 +523,8 @@ int main(void)
 
         rt_notcurses_surface_change_blitter(&notcurses_surface,
                                             &app.framebuffer,
-                                            app.current_blitter);
+                                            app.current_blitter,
+                                            world_allocator);
 
         rt_fps_camera_render_params_t camera_render_params = {
             .camera         = &fps_camera,
