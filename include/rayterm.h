@@ -391,6 +391,18 @@ RT_API void rt_timer_wait(rt_timer_t*   timer,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API rt_float_t rt_schlick_reflectance(rt_float_t cosine,
+                                         rt_float_t refraction_index)
+{
+    rt_float_t r0 = (RT_FLOAT(1.0) - refraction_index) /
+                    (RT_FLOAT(1.0) + refraction_index);
+
+    r0 = r0 * r0;
+
+    return r0 + (RT_FLOAT(1.0) - r0) * pow((RT_FLOAT(1.0) - cosine), RT_FLOAT(5.0));
+}
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// MATH ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -1612,6 +1624,11 @@ RT_API rt_vec4_t rt_vec4_rotate_z(rt_vec4_t     p,
                                                  RT_FLOAT(1.0),          \
                                                  RT_FLOAT(1.0) }
 
+#define RT_COLOR_GREY               (rt_vec4_t){ RT_FLOAT(0.5),          \
+                                                 RT_FLOAT(0.5),          \
+                                                 RT_FLOAT(0.5),          \
+                                                 RT_FLOAT(1.0) }
+
 #define RT_COLOR_RED                (rt_vec4_t){ RT_FLOAT(1.0),          \
                                                  RT_FLOAT(0.0),          \
                                                  RT_FLOAT(0.0),          \
@@ -2034,6 +2051,7 @@ typedef struct
     rt_vec4_t   rayleigh_scattering;
     rt_float_t  mie_scattering;
     rt_float_t  phase_eccentricity;
+    rt_float_t  refractive_index;
     rt_idx_t    steps;
 }
 rt_atmosphere_t;
@@ -2055,6 +2073,8 @@ RT_API rt_atmosphere_t rt_atmosphere_create_default()
         .mie_scattering         = RT_FLOAT(21e-6),
 
         .phase_eccentricity     = RT_FLOAT(0.758),
+
+        .refractive_index       = RT_FLOAT(1.0003),
 
         .steps                  = 2,
 
@@ -3779,60 +3799,95 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
             rt_dielectric_material_t* m = &world->dielectric_material_buffer[material_index];
             RT_ASSERT(m                != NULL);
 
+            rt_vec4_t norm_ray_dir_negated = rt_vec4_negate(rt_vec4_norm(ray.dir));
+
+            const rt_float_t atmosphere_refraction_index = world->atmosphere.refractive_index;
+
+            rt_float_t cos_theta = fmin(rt_vec4_dot(norm_ray_dir_negated,
+                                                    hit_info.info.normal),
+                                        atmosphere_refraction_index);
+
+            rt_float_t sin_theta = sqrt(RT_FLOAT(1.0) - cos_theta * cos_theta);
+
             rt_float_t eta = hit_info.info.is_front_facing
-                           ? (RT_FLOAT(1.0) / m->refractive_index)
-                           : m->refractive_index;
+                           ? atmosphere_refraction_index    / m->refractive_index
+                           : m->refractive_index            / atmosphere_refraction_index;
 
-            rt_vec4_t n = hit_info.info.is_front_facing
-                        ? hit_info.info.normal
-                        : rt_vec4_negate(hit_info.info.normal);
+            bool can_refract = (eta * sin_theta <= RT_FLOAT(1.0));
 
-            rt_vec4_t refracted_ray_dir = rt_vec4_norm(rt_vec4_refract(ray.dir,
-                                                                       n,
-                                                                       eta));
+            if (can_refract) {
 
-            rt_ray_t refracted_ray = { .org = hit_info.info.position,
-                                       .dir = refracted_ray_dir };
+                rt_vec4_t n = hit_info.info.is_front_facing
+                            ? hit_info.info.normal
+                            : rt_vec4_negate(hit_info.info.normal);
 
-            rt_sphere_t current_sphere = world->sphere_buffer[geometry_index];
+                rt_vec4_t refracted_ray_dir = rt_vec4_norm(rt_vec4_refract(ray.dir,
+                                                                           n,
+                                                                           eta));
 
-            rt_hit_info_t sphere_hit_info = {};
+                rt_ray_t refracted_ray = { .org = hit_info.info.position,
+                                           .dir = refracted_ray_dir };
 
-            rt_float_t diameter = current_sphere.geometry_params.radius * RT_FLOAT(2.0);
+                rt_sphere_t current_sphere = world->sphere_buffer[geometry_index];
 
-            rt_vec2_t new_range = { .x = RT_SHADOW_BIAS,
-                                    .y = diameter + RT_SHADOW_BIAS };
+                rt_hit_info_t sphere_hit_info = {};
 
-            if (rt_sphere_hit(current_sphere,
-                              refracted_ray,
-                              new_range,
-                              &sphere_hit_info)) {
+                rt_float_t diameter = current_sphere.geometry_params.radius * RT_FLOAT(2.0);
 
-                rt_float_t eta2 = sphere_hit_info.is_front_facing
-                                ? (RT_FLOAT(1.0) / m->refractive_index)
-                                : m->refractive_index;
+                rt_vec2_t new_range = { .x = RT_SHADOW_BIAS,
+                                        .y = diameter + RT_SHADOW_BIAS };
 
-                rt_vec4_t n2 = sphere_hit_info.is_front_facing
-                             ? sphere_hit_info.normal
-                             : rt_vec4_negate(sphere_hit_info.normal);
+                if (rt_sphere_hit(current_sphere,
+                                  refracted_ray,
+                                  new_range,
+                                  &sphere_hit_info)) {
 
-                refracted_ray.dir = rt_vec4_norm(rt_vec4_refract(refracted_ray.dir,
-                                                                 n2,
-                                                                 eta2));
+                    rt_float_t eta2 = sphere_hit_info.is_front_facing
+                                    ? atmosphere_refraction_index   / m->refractive_index
+                                    : m->refractive_index           / atmosphere_refraction_index;
 
-                refracted_ray.org = sphere_hit_info.position;
+                    rt_vec4_t n2 = sphere_hit_info.is_front_facing
+                                 ? sphere_hit_info.normal
+                                 : rt_vec4_negate(sphere_hit_info.normal);
 
-                rt_world_compute_color_params_t refracted_color_params = {
+                    refracted_ray.dir = rt_vec4_norm(rt_vec4_refract(refracted_ray.dir,
+                                                                     n2,
+                                                                     eta2));
+
+                    refracted_ray.org = sphere_hit_info.position;
+
+                    rt_world_compute_color_params_t refracted_color_params = {
+                        .world      = world,
+                        .ray        = refracted_ray,
+                        .range_z    = range_z,
+                        .depth      = depth - 1,
+                    };
+
+                    return rt_world_compute_color(&refracted_color_params);
+                }
+            }
+            else {
+                rt_vec4_t reflected_ray_dir = rt_vec4_reflect(ray.dir,
+                                                              hit_info.info.normal);
+
+                rt_vec4_t reflected_ray_pos = rt_vec4_sub(hit_info.info.position,
+                                                          rt_vec4_mul_scalar(hit_info.info.normal,
+                                                                             RT_SHADOW_BIAS));
+
+                rt_ray_t reflected_ray = { .org = reflected_ray_pos,
+                                           .dir = rt_vec4_norm(reflected_ray_dir) };
+
+                rt_world_compute_color_params_t color_params = {
                     .world      = world,
-                    .ray        = refracted_ray,
+                    .ray        = reflected_ray,
                     .range_z    = range_z,
                     .depth      = depth - 1,
                 };
 
-                return rt_world_compute_color(&refracted_color_params);
+                return rt_world_compute_color(&color_params);
             }
 
-            return RT_COLOR_BLUE;
+            return rt_world_compute_sky_color(world, ray);
         }
         default:
             RT_ASSERT(false && "Unhandled material type!");
