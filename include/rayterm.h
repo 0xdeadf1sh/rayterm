@@ -3832,8 +3832,9 @@ RT_API rt_ray_t rt_world_compute_refraction_ray
                                .dir = refracted_ray_dir };
 
     switch (geometry_type) {
+
         case RT_HIT_sphere: {
-            
+
             rt_sphere_t sphere = world->sphere_buffer[geometry_index];
 
             rt_world_compute_refraction_ray_for_sphere_params_t sphere_params = {
