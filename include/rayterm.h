@@ -1657,6 +1657,7 @@ typedef struct
     rt_vec4_t   color_1;
     rt_float_t  ambient_factor;
     bool        receives_shadows;
+    bool        casts_shadows;
 }
 rt_checkerboard_material_t;
 
@@ -1666,6 +1667,7 @@ typedef struct
     rt_vec4_t   ambient;
     rt_vec4_t   diffuse;
     bool        receives_shadows;
+    bool        casts_shadows;
 }
 rt_diffuse_material_t;
 
@@ -1675,6 +1677,7 @@ typedef struct
     rt_vec4_t   ambient;
     rt_vec4_t   specular;
     bool        receives_shadows;
+    bool        casts_shadows;
 }
 rt_metallic_material_t;
 
@@ -1685,6 +1688,7 @@ typedef struct
     rt_vec4_t   specular;
     rt_float_t  refractive_index;
     bool        receives_shadows;
+    bool        casts_shadows;
 }
 rt_dielectric_material_t;
 
@@ -3312,6 +3316,50 @@ RT_API rt_vec4_t rt_fragment_shader_checkerboard
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API bool rt_material_casts_shadows(const rt_world_t*     world,
+                                      rt_material_type_t    material_type,
+                                      rt_idx_t              material_index)
+{
+    RT_ASSERT(world                     != NULL);
+
+    if (RT_MATERIAL_TYPE_null_material  == material_type ||
+        -1                              == material_index) {
+
+        return false;
+    }
+
+    switch (material_type) {
+        case RT_MATERIAL_TYPE_checkerboard_material: {
+            const rt_checkerboard_material_t* m = &world->checkerboard_material_buffer[material_index];
+            RT_ASSERT(m != NULL);
+            return m->casts_shadows;
+        }
+        case RT_MATERIAL_TYPE_diffuse_material: {
+            const rt_diffuse_material_t* m = &world->diffuse_material_buffer[material_index];
+            RT_ASSERT(m != NULL);
+            return m->casts_shadows;
+        }
+        case RT_MATERIAL_TYPE_emissive_material: {
+            return false;
+        }
+        case RT_MATERIAL_TYPE_metallic_material: {
+            const rt_metallic_material_t* m = &world->metallic_material_buffer[material_index];
+            RT_ASSERT(m != NULL);
+            return m->casts_shadows;
+        }
+        case RT_MATERIAL_TYPE_dielectric_material: {
+            const rt_dielectric_material_t* m = &world->dielectric_material_buffer[material_index];
+            RT_ASSERT(m != NULL);
+            return m->casts_shadows;
+        }
+        default: {
+            RT_ASSERT(false && "Unhandled material type");
+            return false;
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
                                    const rt_hit_ext_info_t*  hit_info)
 {
@@ -3355,9 +3403,7 @@ RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
         }
     }
 
-    return !(material_index == -1                                 ||
-             RT_MATERIAL_TYPE_null_material == material_type      ||
-             RT_MATERIAL_TYPE_emissive_material == material_type);
+    return rt_material_casts_shadows(world, material_type, material_index);
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -3373,7 +3419,7 @@ typedef struct
 rt_is_in_shadow_params_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_is_in_shadow(const rt_is_in_shadow_params_t* params)
+RT_API void rt_world_compute_shadow(const rt_is_in_shadow_params_t* params)
 {
     RT_ASSERT(params                != NULL);
 
@@ -3648,7 +3694,7 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
         .max_shadow_lights      = RT_MAX_SHADOW_LIGHTS,
     };
 
-    rt_is_in_shadow(&in_shadow_params);
+    rt_world_compute_shadow(&in_shadow_params);
 
     switch (material_type) {
 

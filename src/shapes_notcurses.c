@@ -259,6 +259,7 @@ int main(void)
         .ambient_factor     = RT_FLOAT(0.1),
 
         .receives_shadows   = true,
+        .casts_shadows      = false,
     };
 
     rt_world_set_checkerboard_material_params(&app.world,
@@ -308,7 +309,8 @@ int main(void)
                       RT_FLOAT(1.0),
                       RT_FLOAT(1.0), },
 
-        .receives_shadows = true,
+        .receives_shadows   = true,
+        .casts_shadows      = true,
     };
 
     rt_world_set_metallic_material_params(&app.world,
@@ -358,7 +360,8 @@ int main(void)
                      RT_FLOAT(1.0),
                      RT_FLOAT(1.0), },
 
-        .receives_shadows = true,
+        .receives_shadows   = true,
+        .casts_shadows      = true,
     };
 
     rt_world_set_diffuse_material_params(&app.world,
@@ -409,7 +412,8 @@ int main(void)
 
         .refractive_index = RT_FLOAT(1.1),
 
-        .receives_shadows = true,
+        .receives_shadows   = true,
+        .casts_shadows      = false,
     };
 
     rt_world_set_dielectric_material_params(&app.world,
