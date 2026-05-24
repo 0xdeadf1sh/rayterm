@@ -3611,6 +3611,131 @@ RT_API rt_vec4_t rt_world_compute_sky_color(const rt_world_t*   world,
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
+    const rt_world_t*       world;
+    rt_ray_t                refracted_ray;
+    rt_float_t              refractive_index;
+    rt_sphere_t             sphere;
+}
+rt_world_compute_refraction_ray_for_sphere_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_ray_t rt_world_compute_refraction_ray_for_sphere
+(const rt_world_compute_refraction_ray_for_sphere_params_t* params)
+{
+    RT_ASSERT(params           != NULL);
+
+    const rt_world_t* world     = params->world;
+    rt_ray_t refracted_ray      = params->refracted_ray;
+    rt_float_t refractive_index = params->refractive_index;
+    rt_sphere_t sphere          = params->sphere;
+
+    RT_ASSERT(world            != NULL);
+
+    rt_hit_info_t sphere_hit_info = {};
+
+    rt_float_t diameter = sphere.geometry_params.radius * RT_FLOAT(2.0);
+
+    rt_vec2_t new_range = { .x = RT_SHADOW_BIAS,
+                            .y = diameter + RT_SHADOW_BIAS };
+
+    if (rt_sphere_hit(sphere,
+                      refracted_ray,
+                      new_range,
+                      &sphere_hit_info)) {
+
+        rt_float_t atmosphere_refraction_index = world->atmosphere.refractive_index;
+
+        rt_float_t eta2 = sphere_hit_info.is_front_facing
+                        ? atmosphere_refraction_index   / refractive_index
+                        : refractive_index              / atmosphere_refraction_index;
+
+        rt_vec4_t n2 = sphere_hit_info.is_front_facing
+                     ? sphere_hit_info.normal
+                     : rt_vec4_negate(sphere_hit_info.normal);
+
+        refracted_ray.dir = rt_vec4_norm(rt_vec4_refract(refracted_ray.dir,
+                                                         n2,
+                                                         eta2));
+
+        refracted_ray.org = sphere_hit_info.position;
+    }
+
+    return refracted_ray;
+}
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    const rt_world_t*           world;
+    const rt_hit_ext_info_t*    hit_info;
+    rt_ray_t                    ray;
+    rt_float_t                  eta;
+    rt_hit_geometry_type_t      geometry_type;
+    rt_idx_t                    geometry_index; 
+    rt_float_t                  refractive_index;
+}
+rt_world_compute_refraction_ray_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_ray_t rt_world_compute_refraction_ray
+(const rt_world_compute_refraction_ray_params_t* params)
+{
+    RT_ASSERT(params                       != NULL);
+
+    const rt_world_t* world                 = params->world;
+    const rt_hit_ext_info_t* hit_info       = params->hit_info;
+    rt_ray_t ray                            = params->ray;
+    rt_float_t eta                          = params->eta;
+    rt_hit_geometry_type_t geometry_type    = params->geometry_type;
+    rt_idx_t geometry_index                 = params->geometry_index;
+    rt_float_t refractive_index             = params->refractive_index;
+
+    RT_ASSERT(world                        != NULL);
+    RT_ASSERT(hit_info                     != NULL);
+    RT_ASSERT(geometry_index               >= 0);
+
+    rt_vec4_t n = hit_info->info.is_front_facing
+                ? hit_info->info.normal
+                : rt_vec4_negate(hit_info->info.normal);
+
+    rt_vec4_t refracted_ray_dir = rt_vec4_norm(rt_vec4_refract(ray.dir,
+                                                               n,
+                                                               eta));
+
+    rt_ray_t refracted_ray = { .org = hit_info->info.position,
+                               .dir = refracted_ray_dir };
+
+    switch (geometry_type) {
+        case RT_HIT_sphere: {
+            
+            rt_sphere_t sphere = world->sphere_buffer[geometry_index];
+
+            rt_world_compute_refraction_ray_for_sphere_params_t sphere_params = {
+                .world              = world,
+                .refracted_ray      = refracted_ray,
+                .refractive_index   = refractive_index,
+                .sphere             = sphere,
+            };
+
+            return rt_world_compute_refraction_ray_for_sphere(&sphere_params);
+        }
+
+        case RT_HIT_plane: {
+            return refracted_ray;
+        }
+
+        default: {
+            RT_ASSERT(false && "rt_world_compute_refraction_ray: unhandled geometry type!");
+            break;
+        }
+    }
+
+    return ray;
+}
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
     const rt_world_t*   world;
     rt_ray_t            ray;
     rt_vec2_t           range_z;
@@ -3817,54 +3942,26 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
 
             if (can_refract) {
 
-                rt_vec4_t n = hit_info.info.is_front_facing
-                            ? hit_info.info.normal
-                            : rt_vec4_negate(hit_info.info.normal);
+                rt_world_compute_refraction_ray_params_t refraction_ray_params = {
+                    .world              = world,
+                    .hit_info           = &hit_info,
+                    .ray                = ray,
+                    .eta                = eta,
+                    .geometry_type      = geometry_type,
+                    .geometry_index     = geometry_index,
+                    .refractive_index   = m->refractive_index,
+                };
 
-                rt_vec4_t refracted_ray_dir = rt_vec4_norm(rt_vec4_refract(ray.dir,
-                                                                           n,
-                                                                           eta));
+                rt_ray_t refracted_ray = rt_world_compute_refraction_ray(&refraction_ray_params);
 
-                rt_ray_t refracted_ray = { .org = hit_info.info.position,
-                                           .dir = refracted_ray_dir };
+                rt_world_compute_color_params_t refracted_color_params = {
+                    .world      = world,
+                    .ray        = refracted_ray,
+                    .range_z    = range_z,
+                    .depth      = depth - 1,
+                };
 
-                rt_sphere_t current_sphere = world->sphere_buffer[geometry_index];
-
-                rt_hit_info_t sphere_hit_info = {};
-
-                rt_float_t diameter = current_sphere.geometry_params.radius * RT_FLOAT(2.0);
-
-                rt_vec2_t new_range = { .x = RT_SHADOW_BIAS,
-                                        .y = diameter + RT_SHADOW_BIAS };
-
-                if (rt_sphere_hit(current_sphere,
-                                  refracted_ray,
-                                  new_range,
-                                  &sphere_hit_info)) {
-
-                    rt_float_t eta2 = sphere_hit_info.is_front_facing
-                                    ? atmosphere_refraction_index   / m->refractive_index
-                                    : m->refractive_index           / atmosphere_refraction_index;
-
-                    rt_vec4_t n2 = sphere_hit_info.is_front_facing
-                                 ? sphere_hit_info.normal
-                                 : rt_vec4_negate(sphere_hit_info.normal);
-
-                    refracted_ray.dir = rt_vec4_norm(rt_vec4_refract(refracted_ray.dir,
-                                                                     n2,
-                                                                     eta2));
-
-                    refracted_ray.org = sphere_hit_info.position;
-
-                    rt_world_compute_color_params_t refracted_color_params = {
-                        .world      = world,
-                        .ray        = refracted_ray,
-                        .range_z    = range_z,
-                        .depth      = depth - 1,
-                    };
-
-                    return rt_world_compute_color(&refracted_color_params);
-                }
+                return rt_world_compute_color(&refracted_color_params);
             }
             else {
                 rt_vec4_t reflected_ray_dir = rt_vec4_reflect(ray.dir,
