@@ -1,15 +1,45 @@
 ## rayterm
 
-**rayterm** is a ray-tracer that renders its output to a (preferably modern) terminal emulator.
-The only dependency is [notcurses](https://github.com/dankamongmen/notcurses).
+**rayterm** is a ray-tracer that renders its output to a terminal.
+The only dependencies are [notcurses](https://github.com/dankamongmen/notcurses) and [SDL3](https://github.com/libsdl-org/SDL)---both optional.
 
-## showcase
+## gallery
 
-TODO
+![Two Spheres](gallery/two_spheres.png)
+
+## features
+
+- Written in C23
+- Real-time path tracing on the terminal
+- Supports ASCII (monochrome/colored/matrix) and UTF-8 block output
+- Atmospheric scattering
+- Supported primitives: planes, spheres
+- Supported materials: emissive, diffuse, metallic, dielectric, checkerboard
+- Supported lights: directional, point
+- First-person camera
+- Keyboard support via notcurses
+- Joystick support via SDL3
+- Custom allocator support
+- Callback-based error-handling
 
 ## building
 
-TODO
+Install [git](https://git-scm.com/), [premake](https://premake.github.io/) and the dependencies.
+
+Then:
+
+```
+git clone https://github.com/0xdeadf1sh/rayterm
+cd rayterm
+premake5 gmake # this is for linux; see platform-specific instructions in premake's documentation
+make -C build config=release
+```
+
+Now you may run the `shapes` demo:
+
+`./build/release/shapes_notcurses`
+
+Enjoy!
 
 ## license
 
