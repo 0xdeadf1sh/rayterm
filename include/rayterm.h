@@ -1778,7 +1778,6 @@ typedef enum
     RT_HIT_null,
     RT_HIT_sphere,
     RT_HIT_plane,
-    RT_HIT_aabb,
     RT_HIT_count,
 }
 rt_hit_geometry_type_t;
@@ -1849,23 +1848,6 @@ typedef struct
     rt_material_type_t      material_type;
 }
 rt_plane_t;
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct
-{
-    rt_vec4_t               min_bounding_box;
-    rt_vec4_t               max_bounding_box;
-}
-rt_aabb_params_t;
-
-///////////////////////////////////////////////////////////////////////////
-typedef struct
-{
-    rt_aabb_params_t        geometry_params;
-    rt_idx_t                material_index;
-    rt_material_type_t      material_type;
-}
-rt_aabb_t;
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API bool rt_sphere_hit(rt_sphere_t               sphere,
@@ -1978,79 +1960,6 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
     info->position          = rt_ray_at(ray, t);
     info->normal            = rt_vec4_negate(plane_normal);
     info->t                 = t;
-    info->is_front_facing   = true;
-
-    return true;
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API bool rt_aabb_hit(rt_aabb_t              aabb,
-                        rt_ray_t               ray,
-                        rt_vec2_t              range_z,
-                        rt_hit_info_t*         info)
-{
-    RT_ASSERT(info         != NULL);
-
-    rt_float_t nearest_z    = range_z.x;
-    rt_float_t farthest_z   = range_z.y;
-
-    RT_ASSERT(nearest_z    <= farthest_z);
-
-    rt_float_t tmin = (aabb.geometry_params.min_bounding_box.x - ray.org.x) / ray.dir.x;
-    rt_float_t tmax = (aabb.geometry_params.max_bounding_box.x - ray.org.x) / ray.dir.x;
-
-    if (tmin > tmax) {
-
-        rt_float_t tmp  = tmin;
-        tmin            = tmax;
-        tmax            = tmp;
-    }
-
-    rt_float_t tymin = (aabb.geometry_params.min_bounding_box.y - ray.org.y) / ray.dir.y;
-    rt_float_t tymax = (aabb.geometry_params.max_bounding_box.y - ray.org.y) / ray.dir.y;
-
-    if (tymin > tymax) {
-
-        rt_float_t tmp  = tymin;
-        tymin           = tymax;
-        tymax           = tmp;
-    }
-
-    if ((tmin > tymax) || (tymin > tmax)) {
-        return false;
-    }
-
-    tmin = fmax(tmin, nearest_z);
-    tmax = fmin(tmax, farthest_z);
-
-    rt_float_t tzmin = (aabb.geometry_params.min_bounding_box.z - ray.org.z) / ray.dir.z;
-    rt_float_t tzmax = (aabb.geometry_params.max_bounding_box.z - ray.org.z) / ray.dir.z;
-
-    if (tzmin > tzmax) {
-
-        rt_float_t tmp  = tzmin;
-        tzmin           = tzmax;
-        tzmax           = tmp;
-    }
-
-    if ((tmin > tzmax) || (tzmin > tmax)) {
-        return false;
-    }
-
-    tmin = fmax(tmin, nearest_z);
-    tmax = fmin(tmax, farthest_z);
-
-    if (tmin < nearest_z) {
-        tmin = tmax;
-    }
-
-    if (tmin > farthest_z) {
-        return false;
-    }
-
-    info->position          = rt_ray_at(ray, tmin);
-    info->normal            = (rt_vec4_t){}; // TODO: compute normal
-    info->t                 = tmin;
     info->is_front_facing   = true;
 
     return true;
@@ -2300,7 +2209,6 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
     RT_WORLD_DEF_BUFFER(sphere)
     RT_WORLD_DEF_BUFFER(plane);
-    RT_WORLD_DEF_BUFFER(aabb)
 
     ///////////////////////////////////////////////////////////////////////////
     /////////////////////////////// MATERIALS /////////////////////////////////
@@ -2520,7 +2428,6 @@ RT_WORLD_DEFINE_PUSH(directional_light)
 RT_WORLD_DEFINE_PUSH(point_light)
 RT_WORLD_DEFINE_PUSH(sphere)
 RT_WORLD_DEFINE_PUSH(plane)
-RT_WORLD_DEFINE_PUSH(aabb)
 RT_WORLD_DEFINE_PUSH(emissive_material)
 RT_WORLD_DEFINE_PUSH(checkerboard_material)
 RT_WORLD_DEFINE_PUSH(diffuse_material)
@@ -2532,7 +2439,6 @@ RT_WORLD_DEFINE_POP(directional_light)
 RT_WORLD_DEFINE_POP(point_light)
 RT_WORLD_DEFINE_POP(sphere)
 RT_WORLD_DEFINE_POP(plane)
-RT_WORLD_DEFINE_POP(aabb)
 RT_WORLD_DEFINE_POP(emissive_material)
 RT_WORLD_DEFINE_POP(checkerboard_material)
 RT_WORLD_DEFINE_POP(diffuse_material)
@@ -2544,7 +2450,6 @@ RT_WORLD_DEFINE_RESERVE(directional_light)
 RT_WORLD_DEFINE_RESERVE(point_light)
 RT_WORLD_DEFINE_RESERVE(sphere)
 RT_WORLD_DEFINE_RESERVE(plane)
-RT_WORLD_DEFINE_RESERVE(aabb)
 RT_WORLD_DEFINE_RESERVE(emissive_material)
 RT_WORLD_DEFINE_RESERVE(checkerboard_material)
 RT_WORLD_DEFINE_RESERVE(diffuse_material)
@@ -2556,7 +2461,6 @@ RT_WORLD_DEFINE_FREE(directional_light)
 RT_WORLD_DEFINE_FREE(point_light)
 RT_WORLD_DEFINE_FREE(sphere)
 RT_WORLD_DEFINE_FREE(plane)
-RT_WORLD_DEFINE_FREE(aabb)
 RT_WORLD_DEFINE_FREE(emissive_material)
 RT_WORLD_DEFINE_FREE(checkerboard_material)
 RT_WORLD_DEFINE_FREE(diffuse_material)
@@ -2570,7 +2474,6 @@ RT_API void rt_world_free(rt_world_t* world)
     rt_world_free_point_lights                  (world);
     rt_world_free_spheres                       (world);
     rt_world_free_planes                        (world);
-    rt_world_free_aabbs                         (world);
     rt_world_free_emissive_materials            (world);
     rt_world_free_checkerboard_materials        (world);
     rt_world_free_diffuse_materials             (world);
@@ -2618,13 +2521,6 @@ RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, emissive_material)
-RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, checkerboard_material)
-RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, diffuse_material)
-RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, metallic_material)
-RT_DEFINE_LINK_GEOMETRY_TO_MATERIAL(aabb, dielectric_material)
-
-///////////////////////////////////////////////////////////////////////////
 #define RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(GEOMETRY, MATERIAL)           \
 RT_API void RT_CONCAT4(rt_, GEOMETRY, _unlink_, MATERIAL)                   \
 (rt_world_t* world, rt_idx_t geometry_index)                                \
@@ -2658,13 +2554,6 @@ RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, checkerboard_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, diffuse_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
-
-///////////////////////////////////////////////////////////////////////////
-RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, emissive_material)
-RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, checkerboard_material)
-RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, diffuse_material)
-RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, metallic_material)
-RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(aabb, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_world_set_directional_light_params(rt_world_t*                    world,
@@ -2736,24 +2625,6 @@ RT_API void rt_world_set_plane_params(rt_world_t*               world,
     RT_ASSERT(plane         != NULL);
 
     memcpy(&plane->geometry_params, plane_params, sizeof(rt_plane_params_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_aabb_params(rt_world_t*                world,
-                                     rt_idx_t                   aabb_index,
-                                     const rt_aabb_params_t*    aabb_params)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(aabb_index    >= 0);
-    RT_ASSERT(aabb_params   != NULL);
-
-    rt_aabb_t* aabb_buffer  = world->aabb_buffer;
-    RT_ASSERT(aabb_buffer  != NULL);
-
-    rt_aabb_t* aabb = &aabb_buffer[aabb_index];
-    RT_ASSERT(aabb         != NULL);
-
-    memcpy(&aabb->geometry_params, aabb_params, sizeof(rt_aabb_params_t));
 }
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2929,7 +2800,6 @@ RT_API bool RT_CONCAT3(rt_world_, GEOMETRY, _closest_hit)                   \
 ///////////////////////////////////////////////////////////////////////////
 RT_WORLD_DEF_CLOSEST_HIT(sphere)
 RT_WORLD_DEF_CLOSEST_HIT(plane)
-RT_WORLD_DEF_CLOSEST_HIT(aabb)
 
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
@@ -2972,12 +2842,6 @@ RT_API bool rt_world_any_closest_hit(const rt_world_any_closest_hit_params_t* pa
                                                                  range,
                                                                  &hit_info_array[RT_HIT_plane],
                                                                  face_cull_mode);
-
-    is_hit_bool_array[RT_HIT_aabb] = rt_world_aabb_closest_hit(world,
-                                                               ray,
-                                                               range,
-                                                               &hit_info_array[RT_HIT_aabb],
-                                                               face_cull_mode);
 
     rt_idx_t hit_idx        = -1;
     rt_float_t closest_z    = RT_FLOAT(0.0);
@@ -3533,16 +3397,6 @@ RT_API bool rt_should_be_in_shadow(const rt_world_t*         world,
 
             break;
         }
-        case RT_HIT_aabb: {
-
-            rt_aabb_t* aabb         = &world->aabb_buffer[hit_info->geometry_index];
-            RT_ASSERT(aabb         != NULL);
-
-            material_type           = aabb->material_type;
-            material_index          = aabb->material_index;
-
-            break;
-        }
         default: {
             RT_ASSERT(0 && "Unspecified geometry type!");
             break;
@@ -3928,15 +3782,6 @@ RT_API rt_vec4_t rt_world_compute_color(const rt_world_compute_color_params_t* p
 
             material_type   = world->plane_buffer[geometry_index].material_type;
             material_index  = world->plane_buffer[geometry_index].material_index;
-
-            break;
-
-        case RT_HIT_aabb:
-
-            RT_ASSERT(world->aabb_buffer    != NULL);
-
-            material_type   = world->aabb_buffer[geometry_index].material_type;
-            material_index  = world->aabb_buffer[geometry_index].material_index;
 
             break;
 

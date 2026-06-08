@@ -453,6 +453,7 @@ int main(void)
 
     bool is_running         = true;
     rt_timer_t timer        = {};
+    rt_float_t total_time   = RT_FLOAT(0.0);
 
     char ascii_characters[]         = " .,-~:;=!*#$@";
     uint32_t ascii_characters_len   = sizeof(ascii_characters) - 1;
@@ -464,10 +465,11 @@ int main(void)
                                     world_allocator);
 
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
+        total_time += delta_time * RT_FLOAT(0.01);
 
-        rt_vec4_t yellow_sun_dir = { RT_FLOAT( 0.0),
-                                     RT_FLOAT(-0.1),
-                                     RT_FLOAT(-1.0),
+        rt_vec4_t yellow_sun_dir = { RT_FLOAT(1.0),
+                                     -fabs(sin(total_time)),
+                                     cos(total_time),
                                      RT_FLOAT( 0.0), };
 
         yellow_sun_dir = rt_vec4_norm(yellow_sun_dir);
