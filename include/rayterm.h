@@ -4204,8 +4204,8 @@ RT_API void rt_notcurses_surface_blit_ascii_colored
 (
     const rt_notcurses_surface_t*   surface,
     const rt_framebuffer_t*         framebuffer,
-    const char*                     ascii_characters,
-    uint32_t                        ascii_characters_len
+    const char*                     characters,
+    uint32_t                        characters_len
 )
 {
     uint32_t width  = framebuffer->width;
@@ -4226,12 +4226,12 @@ RT_API void rt_notcurses_surface_blit_ascii_colored
             rt_float_t b    = (rt_float_t)blue     / RT_FLOAT(255.99);
 
             rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind    = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)characters_len);
 
             struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
             nccell_load_char(surface->render_surface,
                              &c,
-                             ascii_characters[ind]);
+                             characters[ind]);
 
             nccell_set_fg_rgb8(&c, red, green, blue);
             ncplane_putc_yx(surface->render_surface,
@@ -4249,8 +4249,8 @@ RT_API void rt_notcurses_surface_blit_ascii_monochrome
 (
     const rt_notcurses_surface_t*    surface,
     const rt_framebuffer_t*          framebuffer,
-    const char*                      ascii_characters,
-    uint32_t                         ascii_characters_len
+    const char*                      characters,
+    uint32_t                         characters_len
 )
 {
     uint32_t width      = framebuffer->width;
@@ -4267,12 +4267,24 @@ RT_API void rt_notcurses_surface_blit_ascii_monochrome
             rt_float_t b    = (rt_float_t)((uint8_t)(pixel >> 16)) / RT_FLOAT(255.99);
 
             rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind    = (uint32_t)(avg * (rt_float_t)(ascii_characters_len));
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)(characters_len));
 
-            ncplane_putchar_yx(surface->render_surface,
-                              (int32_t)j,
-                              (int32_t)i,
-                              ascii_characters[ind]);
+            struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
+            nccell_load_char(surface->render_surface,
+                             &c,
+                             characters[ind]);
+
+            uint32_t red    = (uint32_t)(avg * RT_FLOAT(255.99));
+            uint32_t green  = (uint32_t)(avg * RT_FLOAT(255.99));
+            uint32_t blue   = (uint32_t)(avg * RT_FLOAT(255.99));
+
+            nccell_set_fg_rgb8(&c, red, green, blue);
+            ncplane_putc_yx(surface->render_surface,
+                            (int32_t)j,
+                            (int32_t)i,
+                            &c);
+
+            nccell_release(surface->render_surface, &c);
         }
     }
 }
@@ -4282,8 +4294,8 @@ RT_API void rt_notcurses_surface_blit_ascii_matrix
 (
     const rt_notcurses_surface_t*    surface,
     const rt_framebuffer_t*          framebuffer,
-    const char*                      ascii_characters,
-    uint32_t                         ascii_characters_len
+    const char*                      characters,
+    uint32_t                         characters_len
 )
 {
     uint32_t width      = framebuffer->width;
@@ -4304,12 +4316,12 @@ RT_API void rt_notcurses_surface_blit_ascii_matrix
             rt_float_t b    = (rt_float_t)blue     / RT_FLOAT(255.99);
 
             rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
-            uint32_t ind    = (uint32_t)(avg * (rt_float_t)ascii_characters_len);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)characters_len);
 
             struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
             nccell_load_char(surface->render_surface,
                              &c,
-                             ascii_characters[ind]);
+                             characters[ind]);
 
             uint32_t avg_green = (uint32_t)(avg * RT_FLOAT(255.99));
 
@@ -4325,13 +4337,83 @@ RT_API void rt_notcurses_surface_blit_ascii_matrix
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
-                                      const rt_framebuffer_t*       framebuffer,
-                                      const char*                   ascii_characters,
-                                      uint32_t                      ascii_characters_len)
+RT_API void rt_notcurses_surface_blit_emoji
+(
+    const rt_notcurses_surface_t*       surface,
+    const rt_framebuffer_t*             framebuffer,
+    const uint32_t*                     characters,
+    uint32_t                            characters_len,
+    uint32_t                            stride
+)
 {
-    RT_ASSERT(surface      != NULL);
-    RT_ASSERT(framebuffer  != NULL);
+    uint32_t width      = framebuffer->width;
+    uint32_t height     = framebuffer->height;
+
+    for (uint32_t i = 0; i < width; i += stride) {
+
+        for (uint32_t j = 0; j < height; ++j) {
+
+            uint32_t pixel  = framebuffer->rgb_buffer[j * width + i];
+
+            uint32_t red    = (uint32_t)(uint8_t)(pixel >> 0);
+            uint32_t green  = (uint32_t)(uint8_t)(pixel >> 8);
+            uint32_t blue   = (uint32_t)(uint8_t)(pixel >> 8);
+
+            rt_float_t r    = (rt_float_t)red       / RT_FLOAT(255.99);
+            rt_float_t g    = (rt_float_t)green     / RT_FLOAT(255.99);
+            rt_float_t b    = (rt_float_t)blue      / RT_FLOAT(255.99);
+
+            rt_float_t avg  = (r + g + b) / RT_FLOAT(3.0);
+            uint32_t ind    = (uint32_t)(avg * (rt_float_t)characters_len);
+
+            struct nccell c = NCCELL_TRIVIAL_INITIALIZER;
+            nccell_load_ucs32(surface->render_surface,
+                              &c,
+                              characters[ind]);
+
+            nccell_set_fg_rgb(&c, 0xffffffff);
+            ncplane_putc_yx(surface->render_surface,
+                            (int32_t)j,
+                            (int32_t)i,
+                            &c);
+
+            nccell_release(surface->render_surface, &c);
+        }
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    const rt_notcurses_surface_t*   surface;
+    const rt_framebuffer_t*         framebuffer;
+    const char*                     ascii_characters;
+    uint32_t                        ascii_characters_len;
+    const uint32_t*                 emoji_characters;
+    uint32_t                        emoji_characters_len;
+    uint32_t                        emoji_characters_stride;
+}
+rt_notcurses_surface_blit_params_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* params)
+{
+    RT_ASSERT(params       != NULL);
+
+    const rt_notcurses_surface_t* surface   = params->surface;
+    const rt_framebuffer_t* framebuffer     = params->framebuffer;
+    const char* ascii_characters            = params->ascii_characters;
+    uint32_t ascii_characters_len           = params->ascii_characters_len;
+    const uint32_t* emoji_characters        = params->emoji_characters;
+    uint32_t emoji_characters_len           = params->emoji_characters_len;
+    uint32_t emoji_characters_stride        = params->emoji_characters_stride;
+
+    RT_ASSERT(surface                      != NULL);
+    RT_ASSERT(framebuffer                  != NULL);
+    RT_ASSERT(ascii_characters             != NULL);
+    RT_ASSERT(ascii_characters_len         >  0);
+    RT_ASSERT(emoji_characters             != NULL);
+    RT_ASSERT(emoji_characters_len         >  0);
 
     switch (surface->blitter) {
         case NCBLIT_1x1:
@@ -4347,9 +4429,9 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
         case NCBLIT_4x1: {
 
             rt_notcurses_surface_blit_ascii_colored(surface,
-                                                   framebuffer,
-                                                   ascii_characters,
-                                                   ascii_characters_len);
+                                                    framebuffer,
+                                                    ascii_characters,
+                                                    ascii_characters_len);
             break;
 
         }
@@ -4370,6 +4452,15 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_t* surface,
                                                    ascii_characters_len);
             break;
 
+        }
+        case NCBLIT_BRAILLE: {
+
+            rt_notcurses_surface_blit_emoji(surface,
+                                            framebuffer,
+                                            emoji_characters,
+                                            emoji_characters_len,
+                                            emoji_characters_stride);
+            break;
         }
         default:
             assert(false && "rt_notcurses_surface_blit: unknown blitter");

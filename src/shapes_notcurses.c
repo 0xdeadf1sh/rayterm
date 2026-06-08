@@ -103,6 +103,9 @@ static void gamepad_down_callback(int32_t button, void* userPtr)
                 blitter = NCBLIT_8x1;
                 break;
             case NCBLIT_8x1:
+                blitter = NCBLIT_BRAILLE;
+                break;
+            case NCBLIT_BRAILLE:
                 blitter = NCBLIT_1x1;
                 break;
             default:
@@ -113,6 +116,9 @@ static void gamepad_down_callback(int32_t button, void* userPtr)
 
         switch (blitter) {
             case NCBLIT_1x1:
+                blitter = NCBLIT_BRAILLE;
+                break;
+            case NCBLIT_BRAILLE:
                 blitter = NCBLIT_8x1;
                 break;
             case NCBLIT_8x1:
@@ -455,8 +461,32 @@ int main(void)
     rt_timer_t timer        = {};
     rt_float_t total_time   = RT_FLOAT(0.0);
 
-    char ascii_characters[]         = " .,-~:;=!*#$@";
-    uint32_t ascii_characters_len   = sizeof(ascii_characters) - 1;
+    const char ascii_characters[]   = " .-~:;=!*#$@";
+
+    uint32_t emoji_characters[]     = {
+        0x03000,    // Ideographic Space
+        0x1F98D,    // 🦍
+        0x1FAA8,    // 🪨
+        0x1F954,    // 🥔
+        0x1F610,    // 😐
+        0x1F633,    // 😳
+        0x1F92F,    // 🤯
+        0x1F9E0,    // 🧠
+        0x1F4A1,    // 💡
+        0x1F47C,    // 👼
+        0x02728,    // ✨
+        0x1F31F,    // 🌟
+    };
+
+    rt_notcurses_surface_blit_params_t surface_blit_params = {
+        .surface                    = &notcurses_surface,
+        .framebuffer                = &app.framebuffer,
+        .ascii_characters           = ascii_characters,
+        .ascii_characters_len       = RT_BUFFER_LEN(ascii_characters) - 1,
+        .emoji_characters           = emoji_characters,
+        .emoji_characters_len       = RT_BUFFER_LEN(emoji_characters),
+        .emoji_characters_stride    = 2,
+    };
 
     while (is_running) {
 
@@ -538,10 +568,7 @@ int main(void)
 
         rt_fps_camera_render(&camera_render_params);
 
-        rt_notcurses_surface_blit(&notcurses_surface,
-                                  &app.framebuffer,
-                                  ascii_characters,
-                                  ascii_characters_len);
+        rt_notcurses_surface_blit(&surface_blit_params);
 
         RT_ASSERT(-1 != notcurses_render(app.nc));
 
