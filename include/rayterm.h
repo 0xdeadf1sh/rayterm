@@ -125,7 +125,7 @@ typedef void (*rt_error_callback_t)(const char*             filename,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-typedef enum
+typedef enum : int32_t
 {
     RT_STATUS_success,
     RT_STATUS_failure,
@@ -1700,7 +1700,7 @@ RT_API rt_vec4_t rt_vec4_rotate_z(rt_vec4_t     p,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-typedef enum
+typedef enum : int32_t
 {
     RT_MATERIAL_TYPE_null_material,
     RT_MATERIAL_TYPE_emissive_material,
@@ -1773,7 +1773,7 @@ typedef struct
 rt_ray_t;
 
 ///////////////////////////////////////////////////////////////////////////
-typedef enum
+typedef enum : int32_t
 {
     RT_HIT_null,
     RT_HIT_sphere,
@@ -1970,7 +1970,7 @@ RT_API bool rt_plane_hit(rt_plane_t             plane,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-typedef enum
+typedef enum : int32_t
 {
     RT_LIGHT_null_light,
     RT_LIGHT_directional_light,
@@ -2172,7 +2172,7 @@ RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
 ///////////////////////////////////////////////////////////////////////////
 
 ///////////////////////////////////////////////////////////////////////////
-typedef enum
+typedef enum : int32_t
 {
     RT_FACE_cull_null,
     RT_FACE_cull_front   = 1 << 0,
@@ -4054,6 +4054,37 @@ RT_API void rt_framebuffer_free(rt_framebuffer_t*       framebuffer,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+//////////////////////////// COMMON BLITTERS //////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef enum : int32_t
+{
+    RT_BLITTER_1x1,
+    RT_BLITTER_2x1,
+    RT_BLITTER_2x2,
+    RT_BLITTER_3x2,
+    RT_BLITTER_COLORED_ASCII,
+    RT_BLITTER_MONOCHROME_ASCII,
+    RT_BLITTER_MATRIX,
+    RT_BLITTER_EMOJI,
+    RT_BLITTER_COUNT,
+}
+rt_blitter_t;
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_blitter_t rt_blitter_rotate_right(rt_blitter_t blitter)
+{
+    return ((int32_t)blitter + 1) % RT_BLITTER_COUNT;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API rt_blitter_t rt_blitter_rotate_left(rt_blitter_t blitter)
+{
+    return ((int32_t)blitter + RT_BLITTER_COUNT - 1) % RT_BLITTER_COUNT;
+}
+
+///////////////////////////////////////////////////////////////////////////
 /////////////////////////// NOTCURSES SURFACE /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -4070,12 +4101,12 @@ typedef struct
     uint32_t                    rows;
     uint32_t                    cols;
 
-    ncblitter_e                 blitter;
+    rt_blitter_t                blitter;
 }
 rt_notcurses_surface_t;
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
+RT_API void rt_compute_row_col_multipler(rt_blitter_t   blitter,
                                          uint32_t*      row_multiplier,
                                          uint32_t*      col_multiplier)
 {
@@ -4084,24 +4115,44 @@ RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
 
     switch (blitter) {
 
-        case NCBLIT_1x1:
+        case RT_BLITTER_1x1:
             *row_multiplier = 1;
             *col_multiplier = 1;
             break;
 
-        case NCBLIT_2x1:
+        case RT_BLITTER_2x1:
             *row_multiplier = 2;
             *col_multiplier = 1;
             break;
 
-        case NCBLIT_2x2:
+        case RT_BLITTER_2x2:
             *row_multiplier = 2;
             *col_multiplier = 2;
             break;
 
-        case NCBLIT_3x2:
+        case RT_BLITTER_3x2:
             *row_multiplier = 3;
             *col_multiplier = 2;
+            break;
+
+        case RT_BLITTER_COLORED_ASCII:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
+            break;
+
+        case RT_BLITTER_MONOCHROME_ASCII:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
+            break;
+
+        case RT_BLITTER_MATRIX:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
+            break;
+
+        case RT_BLITTER_EMOJI:
+            *row_multiplier = 1;
+            *col_multiplier = 1;
             break;
 
         default:
@@ -4112,8 +4163,25 @@ RT_API void rt_compute_row_col_multipler(ncblitter_e    blitter,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+RT_API ncblitter_e rt_rayterm_blitter_to_notcurses_blitter(rt_blitter_t blitter)
+{
+    switch (blitter) {
+        case RT_BLITTER_1x1:
+            return NCBLIT_1x1;
+        case RT_BLITTER_2x1:
+            return NCBLIT_2x1;
+        case RT_BLITTER_2x2:
+            return NCBLIT_2x2;
+        case RT_BLITTER_3x2:
+            return NCBLIT_3x2;
+        default:
+            return NCBLIT_1x1;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////
 RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane*   ncplane,
-                                                          ncblitter_e       blitter)
+                                                          rt_blitter_t      blitter)
 {
     RT_ASSERT(ncplane      != NULL);
 
@@ -4134,7 +4202,7 @@ RT_API rt_notcurses_surface_t rt_notcurses_surface_create(struct ncplane*   ncpl
     surface.blitter                  = blitter;
 
     surface.visual_options.n         = ncplane;
-    surface.visual_options.blitter   = blitter;
+    surface.visual_options.blitter   = rt_rayterm_blitter_to_notcurses_blitter(blitter);
     surface.visual_options.leny      = surface.rows;
     surface.visual_options.lenx      = surface.cols;
     surface.visual_options.scaling   = NCSCALE_NONE;
@@ -4183,7 +4251,7 @@ RT_API void rt_notcurses_surface_resize(rt_notcurses_surface_t*     surface,
 ///////////////////////////////////////////////////////////////////////////
 RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surface,
                                                 rt_framebuffer_t*           framebuffer,
-                                                ncblitter_e                 blitter,
+                                                rt_blitter_t                blitter,
                                                 rt_allocator_t              allocator)
 {
     RT_ASSERT(surface       != NULL);
@@ -4191,9 +4259,8 @@ RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surf
 
     if (surface->blitter != blitter) {
 
-        // kind of an awkward API
         surface->blitter                    = blitter;
-        surface->visual_options.blitter     = blitter;
+        surface->visual_options.blitter     = rt_rayterm_blitter_to_notcurses_blitter(blitter);
     }
 
     rt_notcurses_surface_resize(surface, framebuffer, allocator);
@@ -4416,17 +4483,17 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
     RT_ASSERT(emoji_characters_len         >  0);
 
     switch (surface->blitter) {
-        case NCBLIT_1x1:
-        case NCBLIT_2x1:
-        case NCBLIT_2x2:
-        case NCBLIT_3x2:
+        case RT_BLITTER_1x1:
+        case RT_BLITTER_2x1:
+        case RT_BLITTER_2x2:
+        case RT_BLITTER_3x2:
 
             RT_ASSERT(-1 != ncblit_rgba(framebuffer->rgb_buffer,
                                         (int32_t)(surface->cols * sizeof(uint32_t)),
                                         &surface->visual_options));
             break;
 
-        case NCBLIT_4x1: {
+        case RT_BLITTER_COLORED_ASCII: {
 
             rt_notcurses_surface_blit_ascii_colored(surface,
                                                     framebuffer,
@@ -4435,7 +4502,7 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
             break;
 
         }
-        case NCBLIT_4x2: {
+        case RT_BLITTER_MONOCHROME_ASCII: {
 
             rt_notcurses_surface_blit_ascii_monochrome(surface,
                                                        framebuffer,
@@ -4444,7 +4511,7 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
             break;
 
         }
-        case NCBLIT_8x1: {
+        case RT_BLITTER_MATRIX: {
 
             rt_notcurses_surface_blit_ascii_matrix(surface,
                                                    framebuffer,
@@ -4453,7 +4520,7 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
             break;
 
         }
-        case NCBLIT_BRAILLE: {
+        case RT_BLITTER_EMOJI: {
 
             rt_notcurses_surface_blit_emoji(surface,
                                             framebuffer,

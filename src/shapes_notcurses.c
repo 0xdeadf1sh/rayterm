@@ -45,7 +45,7 @@ typedef struct
     rt_framebuffer_t        framebuffer;
     rt_world_t              world;
     rt_sdl3_gamepad_info_t  gamepad_info;
-    ncblitter_e             current_blitter;
+    rt_blitter_t            current_blitter;
 }
 app_state_t;
 
@@ -79,70 +79,13 @@ static void app_destroy(app_state_t* state)
 static void gamepad_down_callback(int32_t button, void* userPtr)
 {
     app_state_t* app = (app_state_t*)userPtr;
-    ncblitter_e blitter = app->current_blitter;
+    rt_blitter_t blitter = app->current_blitter;
 
     if (button == SDL_GAMEPAD_BUTTON_EAST) {
-
-        switch (blitter) {
-            case NCBLIT_1x1:
-                blitter = NCBLIT_2x1;
-                break;
-            case NCBLIT_2x1:
-                blitter = NCBLIT_2x2;
-                break;
-            case NCBLIT_2x2:
-                blitter = NCBLIT_3x2;
-                break;
-            case NCBLIT_3x2:
-                blitter = NCBLIT_4x1;
-                break;
-            case NCBLIT_4x1:
-                blitter = NCBLIT_4x2;
-                break;
-            case NCBLIT_4x2:
-                blitter = NCBLIT_8x1;
-                break;
-            case NCBLIT_8x1:
-                blitter = NCBLIT_BRAILLE;
-                break;
-            case NCBLIT_BRAILLE:
-                blitter = NCBLIT_1x1;
-                break;
-            default:
-                break;
-        }
+        blitter = rt_blitter_rotate_right(blitter);
     }
     else if (button == SDL_GAMEPAD_BUTTON_WEST) {
-
-        switch (blitter) {
-            case NCBLIT_1x1:
-                blitter = NCBLIT_BRAILLE;
-                break;
-            case NCBLIT_BRAILLE:
-                blitter = NCBLIT_8x1;
-                break;
-            case NCBLIT_8x1:
-                blitter = NCBLIT_4x2;
-                break;
-            case NCBLIT_4x2:
-                blitter = NCBLIT_4x1;
-                break;
-            case NCBLIT_4x1:
-                blitter = NCBLIT_3x2;
-                break;
-            case NCBLIT_3x2:
-                blitter = NCBLIT_2x2;
-                break;
-            case NCBLIT_2x2:
-                blitter = NCBLIT_2x1;
-                break;
-            case NCBLIT_2x1:
-                blitter = NCBLIT_1x1;
-                break;
-            default:
-                break;
-        }
-
+        blitter = rt_blitter_rotate_left(blitter);
     }
 
     app->current_blitter = blitter;
@@ -194,7 +137,6 @@ int main(void)
     struct ncplane* std = notcurses_stdplane(app.nc);
     RT_ASSERT(std != NULL);
 
-    app.current_blitter = NCBLIT_1x1;
     rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std,
                                                                            app.current_blitter);
 
