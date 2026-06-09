@@ -37,7 +37,7 @@
 #define SUN_SPEED               RT_FLOAT(0.01)
 
 ///////////////////////////////////////////////////////////////////////////
-/////////////////////////// APPLICATION STATE  ////////////////////////////
+/////////////////////////// APPLICATION STATE /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 typedef struct
 {
@@ -54,9 +54,9 @@ static void app_destroy(app_state_t* state)
 {
     if (state) {
 
-        rt_allocator_t world_allocator = rt_world_retrieve_active_allocator(&state->world);
+        rt_allocator_t default_allocator = rt_world_retrieve_active_allocator(&state->world);
 
-        rt_framebuffer_free(&state->framebuffer, world_allocator);
+        rt_framebuffer_free(&state->framebuffer, default_allocator);
         rt_world_free(&state->world);
 
         if (state->nc) {
@@ -105,10 +105,13 @@ static void error_callback(const char*      filename,
     app_state_t* state = (app_state_t*)userParam;
     app_destroy(state);
 
-    fprintf(stderr, "ERROR: %s:%" PRIu32 " in %s: %s\n", filename,
-                                                         line,
-                                                         function_name,
-                                                         message);
+    fprintf(stderr,
+            "[RAYTERM] error: %s:%" PRIu32 " in %s: %s\n",
+            filename,
+            line,
+            function_name,
+            message);
+
     exit(EXIT_FAILURE);
 }
 
@@ -140,12 +143,12 @@ int main(void)
     rt_notcurses_surface_t notcurses_surface = rt_notcurses_surface_create(std,
                                                                            app.current_blitter);
 
-    rt_allocator_t world_allocator = rt_world_retrieve_active_allocator(&app.world);
+    rt_allocator_t default_allocator = rt_world_retrieve_active_allocator(&app.world);
 
     RT_ASSERT(RT_STATUS_success == rt_framebuffer_create(notcurses_surface.cols,
                                                          notcurses_surface.rows,
                                                          &app.framebuffer,
-                                                         world_allocator));
+                                                         default_allocator));
 
     ///////////////////////////////////////////////////////////////////////////
     //////////////////////////// WORLD & ATMOSPHERE ///////////////////////////
@@ -392,7 +395,7 @@ int main(void)
     rt_fps_camera_sdl3_joystick_keybindings_t joystick_bindings = rt_fps_camera_sdl3_default_joystick_keybindings();
 
     rt_fps_camera_update_with_sdl3_joystick_callbacks_t callbacks = {};
-    callbacks.userPtr = &app;
+    callbacks.userPtr                   = &app;
     callbacks.event_gamepad_button_down = gamepad_down_callback;
 
     ///////////////////////////////////////////////////////////////////////////
@@ -403,30 +406,19 @@ int main(void)
     rt_timer_t timer        = {};
     rt_float_t total_time   = RT_FLOAT(0.0);
 
-    const char ascii_characters[]   = " .-~:;=!*#$@";
+    uint32_t ascii_characters_len   = 0;
+    const char* ascii_characters    = rt_default_ascii_characters(&ascii_characters_len);
 
-    uint32_t emoji_characters[]     = {
-        0x03000,    // Ideographic Space
-        0x1F98D,    // 🦍
-        0x1FAA8,    // 🪨
-        0x1F954,    // 🥔
-        0x1F610,    // 😐
-        0x1F633,    // 😳
-        0x1F92F,    // 🤯
-        0x1F9E0,    // 🧠
-        0x1F4A1,    // 💡
-        0x1F47C,    // 👼
-        0x02728,    // ✨
-        0x1F31F,    // 🌟
-    };
+    uint32_t emoji_characters_len   = 0;
+    const uint32_t* emoji_characters= rt_default_emoji_characters(&emoji_characters_len);
 
     rt_notcurses_surface_blit_params_t surface_blit_params = {
         .surface                    = &notcurses_surface,
         .framebuffer                = &app.framebuffer,
         .ascii_characters           = ascii_characters,
-        .ascii_characters_len       = RT_BUFFER_LEN(ascii_characters) - 1,
+        .ascii_characters_len       = ascii_characters_len,
         .emoji_characters           = emoji_characters,
-        .emoji_characters_len       = RT_BUFFER_LEN(emoji_characters),
+        .emoji_characters_len       = emoji_characters_len,
         .emoji_characters_stride    = 2,
     };
 
@@ -434,13 +426,13 @@ int main(void)
 
         rt_notcurses_surface_resize(&notcurses_surface,
                                     &app.framebuffer,
-                                    world_allocator);
+                                    default_allocator);
 
         rt_float_t delta_time = rt_timer_update(&timer, NULL, NULL);
         total_time += delta_time * RT_FLOAT(0.01);
 
         rt_vec4_t yellow_sun_dir = { RT_FLOAT(1.0),
-                                     -fabs(sin(total_time)),
+                                    -fabs(sin(total_time)),
                                      cos(total_time),
                                      RT_FLOAT( 0.0), };
 
@@ -470,6 +462,10 @@ int main(void)
                                              diffuse_sphere_material_index,
                                              &diffuse_mat_params);
 
+        ///////////////////////////////////////////////////////////////////////////
+        //////////////////////////// JOYSTICK CONTROLS ////////////////////////////
+        ///////////////////////////////////////////////////////////////////////////
+
         rt_fps_camera_update_with_sdl3_joystick_params_t params = {
             .camera         = &fps_camera,
             .keybindings    = &joystick_bindings,
@@ -481,24 +477,24 @@ int main(void)
         rt_fps_camera_update_with_sdl3_joystick(&params,
                                                 callbacks);
 
-        if (!app.gamepad_info.gamepad) {
+        ///////////////////////////////////////////////////////////////////////////
+        //////////////////////////// KEYBOARD CONTROLS ////////////////////////////
+        ///////////////////////////////////////////////////////////////////////////
 
-            rt_fps_camera_update_with_notcurses_params_t update_params = {
-                .camera         = &fps_camera,
-                .delta_time     = delta_time,
-                .keybindings    = &keyboard_bindings,
-                .nc             = app.nc,
-                .is_running     = &is_running,
-            };
+        rt_fps_camera_update_with_notcurses_params_t update_params = {
+            .camera         = &fps_camera,
+            .delta_time     = delta_time,
+            .keybindings    = &keyboard_bindings,
+            .nc             = app.nc,
+            .is_running     = &is_running,
+        };
 
-            rt_fps_camera_update_with_notcurses(&update_params);
-
-        }
+        rt_fps_camera_update_with_notcurses(&update_params);
 
         rt_notcurses_surface_change_blitter(&notcurses_surface,
                                             &app.framebuffer,
                                             app.current_blitter,
-                                            world_allocator);
+                                            default_allocator);
 
         rt_fps_camera_render_params_t camera_render_params = {
             .camera         = &fps_camera,

@@ -53,7 +53,7 @@ typedef double rt_float_t;
 #define RT_FLOAT(X)                     X ## f
 typedef float rt_float_t;
 
-#endif
+#endif // RT_USE_FLOAT64
 
 ///////////////////////////////////////////////////////////////////////////
 #ifdef RT_USE_IDX64
@@ -70,7 +70,7 @@ typedef int32_t rt_idx_t;
 #define RT_IDX_MIN INT32_MIN
 #define RT_IDX_MAX INT32_MAX
 
-#endif
+#endif // RT_USE_IDX64
 
 ///////////////////////////////////////////////////////////////////////////
 ////////////////////////////// CONSTANTS //////////////////////////////////
@@ -177,6 +177,7 @@ RT_API void rt_set_error_callback(rt_error_callback_t   callback,
 //////////////////////////// MACRO FUNCTIONS //////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #define RT_BUFFER_LEN(BUFFER)           (sizeof(BUFFER) / sizeof((BUFFER)[0]))
+#define RT_STRING_LEN(STRING)           (RT_BUFFER_LEN(STRING) - 1)
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_TO_RADIANS(DEGREES)          (DEGREES * RT_FLOAT(0.0174533))
@@ -315,10 +316,14 @@ typedef void (*rt_timer_callback_t)(rt_timer_t*     timer,
 
 ///////////////////////////////////////////////////////////////////////////
 #ifdef RT_USE_SDL3
+
 #include <SDL3/SDL.h>
+
 #else
+
 #include <time.h>
-#endif
+
+#endif // RT_USE_SDL3
 
 ///////////////////////////////////////////////////////////////////////////
 RT_API rt_float_t rt_timer_update(rt_timer_t*              timer,
@@ -333,7 +338,7 @@ RT_API rt_float_t rt_timer_update(rt_timer_t*              timer,
 
     rt_float_t current_time     = (rt_float_t)clock() / (rt_float_t)CLOCKS_PER_SEC;
 
-#endif
+#endif // RT_USE_SDL3
 
     rt_float_t delta_time       = (timer->last_time > RT_FLOAT(0.0)) ? (current_time - timer->last_time)
                                                                      : RT_FLOAT(0.0);
@@ -367,7 +372,7 @@ RT_API void rt_timer_wait(rt_timer_t*   timer,
 
     rt_float_t elapsed_time     = ((rt_float_t)clock() / (rt_float_t)CLOCKS_PER_SEC) - timer->last_time;
 
-#endif
+#endif // RT_USE_SDL3
 
     rt_float_t ms               = RT_FLOAT(1000.0) / target_fps;
     rt_float_t remaining_time   = ms - elapsed_time;
@@ -387,7 +392,7 @@ RT_API void rt_timer_wait(rt_timer_t*   timer,
 
         nanosleep(&ts, NULL);
 
-#endif
+#endif // RT_USE_SDL3
     }
 }
 
@@ -4085,6 +4090,46 @@ RT_API rt_blitter_t rt_blitter_rotate_left(rt_blitter_t blitter)
 }
 
 ///////////////////////////////////////////////////////////////////////////
+///////////////////////// DEFAULT CHARACTER SETS //////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+RT_API const uint32_t* rt_default_emoji_characters(uint32_t* len)
+{
+    RT_ASSERT(len != NULL);
+
+    static const uint32_t emoji_characters[] = {
+        0x03000,    // Ideographic Space
+        0x1F98D,    // 🦍
+        0x1FAA8,    // 🪨
+        0x1F954,    // 🥔
+        0x1F610,    // 😐
+        0x1F633,    // 😳
+        0x1F92F,    // 🤯
+        0x1F9E0,    // 🧠
+        0x1F4A1,    // 💡
+        0x1F47C,    // 👼
+        0x02728,    // ✨
+        0x1F31F,    // 🌟
+        0x00000,    // NULL
+    };
+
+    *len = RT_STRING_LEN(emoji_characters);
+    return emoji_characters;
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API const char* rt_default_ascii_characters(uint32_t* len)
+{
+    RT_ASSERT(len != NULL);
+
+    static const char ascii_characters[] = " .-~:;=!*#$@";
+
+    *len = RT_STRING_LEN(ascii_characters);
+    return ascii_characters;
+}
+
+///////////////////////////////////////////////////////////////////////////
 /////////////////////////// NOTCURSES SURFACE /////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -4260,7 +4305,7 @@ RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surf
     if (surface->blitter != blitter) {
 
         surface->blitter                    = blitter;
-        surface->visual_options.blitter     = rt_rayterm_blitter_to_notcurses_blitter(blitter);
+        surface->visual_options.blitter     = rt_rayterm_blitter_to_notcurses_blitter(  blitter);
     }
 
     rt_notcurses_surface_resize(surface, framebuffer, allocator);
@@ -4535,7 +4580,7 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
     }
 }
 
-#endif
+#endif // RT_USE_NOTCURSES
 
 ///////////////////////////////////////////////////////////////////////////
 //////////////////////////////// FPS CAMERA ///////////////////////////////
@@ -4829,7 +4874,7 @@ RT_API void rt_fps_camera_render(rt_fps_camera_render_params_t* params)
 
     rt_float_t aspect           = (rt_float_t)(cols) / (rt_float_t)(rows);
 
-#endif
+#endif // RT_USE_NOTCURSES
 
 
     rt_vec4_t camera_dir        = { RT_FLOAT(0.0),
@@ -5248,7 +5293,7 @@ RT_API void rt_fps_camera_update_with_notcurses
     }
 }
 
-#endif
+#endif // RT_USE_NOTCURSES
 
 ///////////////////////////////////////////////////////////////////////////
 ///////////////// CAMERA MOVEMENT WITH JOYSTICK (SDL3) ////////////////////
@@ -5544,6 +5589,6 @@ RT_API void rt_fps_camera_update_with_sdl3_joystick
     }
 }
 
-#endif
+#endif // RT_USE_SDL3
 
 #endif // RT_RAYTERM_H
