@@ -212,7 +212,7 @@ int main(void)
                      RT_FLOAT(0.05),
                      RT_FLOAT(1.0), },
 
-        .ambient_factor     = RT_FLOAT(0.1),
+        .ambient_factor     = RT_FLOAT(0.001),
 
         .receives_shadows   = true,
         .casts_shadows      = false,
@@ -497,16 +497,17 @@ int main(void)
                                             default_allocator);
 
         rt_fps_camera_render_params_t camera_render_params = {
-            .camera         = &fps_camera,
-            .world          = &app.world,
-            .framebuffer    = &app.framebuffer,
-            .delta_time     = delta_time,
-            .surface        = &notcurses_surface,
+            .camera             = &fps_camera,
+            .world              = &app.world,
+            .framebuffer        = &app.framebuffer,
+            .delta_time         = delta_time,
+            .surface            = &notcurses_surface,
         };
 
         rt_fps_camera_render(&camera_render_params);
 
         rt_notcurses_surface_blit(&surface_blit_params);
+        rt_notcurses_render_debug_log(notcurses_surface.render_surface);
 
         RT_ASSERT(-1 != notcurses_render(app.nc));
 

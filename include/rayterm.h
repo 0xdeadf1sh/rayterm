@@ -32,6 +32,13 @@
 #include <string.h>
 
 ///////////////////////////////////////////////////////////////////////////
+//////////////////////////////// VERSION //////////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+#define RT_ENGINE_VERSION_MAJOR 0
+#define RT_ENGINE_VERSION_MINOR 1
+#define RT_ENGINE_VERSION_PATCH 0
+
+///////////////////////////////////////////////////////////////////////////
 ////////////////////////////////// API ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 #ifndef RT_API
@@ -109,6 +116,16 @@ typedef int32_t rt_idx_t;
 ///////////////////////////////////////////////////////////////////////////
 #ifndef RT_WORLD_ALLOCATOR_COUNT
 #define RT_WORLD_ALLOCATOR_COUNT 8
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_DEBUG_LOG_LINE_MAX
+#define RT_DEBUG_LOG_LINE_MAX 64
+#endif
+
+///////////////////////////////////////////////////////////////////////////
+#ifndef RT_DEBUG_LOG_COUNT_MAX
+#define RT_DEBUG_LOG_COUNT_MAX 32
 #endif
 
 ///////////////////////////////////////////////////////////////////////////
@@ -2173,6 +2190,20 @@ RT_API rt_vec4_t rt_atmosphere_scatter(const rt_atmosphere_t*  atmosphere,
 }
 
 ///////////////////////////////////////////////////////////////////////////
+////////////////////////// PERFORMANCE METRICS ////////////////////////////
+///////////////////////////////////////////////////////////////////////////
+
+///////////////////////////////////////////////////////////////////////////
+typedef struct
+{
+    uint64_t    frame_cnt;
+
+    rt_float_t  total_frame_ms;
+    rt_float_t  total_engine_ms;
+}
+rt_performance_metrics_t;
+
+///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////// WORLD ///////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 
@@ -2234,6 +2265,11 @@ typedef struct
     ///////////////////////////////////////////////////////////////////////////
     rt_allocator_t      allocators[RT_WORLD_ALLOCATOR_COUNT];
     rt_idx_t            current_allocator_idx;
+
+    ///////////////////////////////////////////////////////////////////////////
+    ////////////////////////// PERFORMANCE METRICS ////////////////////////////
+    ///////////////////////////////////////////////////////////////////////////
+    rt_performance_metrics_t perf_metrics;
 }
 rt_world_t;
 
@@ -2561,166 +2597,65 @@ RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, metallic_material)
 RT_DEFINE_UNLINK_GEOMETRY_TO_MATERIAL(plane, dielectric_material)
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_directional_light_params(rt_world_t*                    world,
-                                                  rt_idx_t                       light_index,
-                                                  const rt_directional_light_t*  light_params)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(light_index   >= 0);
-    RT_ASSERT(light_params  != NULL);
-
-    rt_directional_light_t* light_buffer = world->directional_light_buffer;
-    RT_ASSERT(light_buffer  != NULL);
-
-    rt_directional_light_t* light = &light_buffer[light_index];
-    RT_ASSERT(light         != NULL);
-
-    memcpy(light, light_params, sizeof(rt_directional_light_t));
+#define RT_DEFINE_SET_OBJECT_PARAMS(OBJECT)                                 \
+RT_API void RT_CONCAT3(rt_world_set_, OBJECT, _params)                      \
+(                                                                           \
+ rt_world_t*                            world,                              \
+ rt_idx_t                               object_index,                       \
+ const RT_CONCAT3(rt_, OBJECT, _t)*     object_params                       \
+)                                                                           \
+{                                                                           \
+    RT_ASSERT(world                 != NULL);                               \
+    RT_ASSERT(object_index          >= 0);                                  \
+    RT_ASSERT(object_params         != NULL);                               \
+                                                                            \
+    typedef RT_CONCAT3(rt_, OBJECT, _t) object_type;                        \
+    object_type* object_buffer       = world->RT_CONCAT2(OBJECT, _buffer);  \
+    RT_ASSERT(object_buffer         != NULL);                               \
+                                                                            \
+    object_type* object              = &object_buffer[object_index];        \
+    RT_ASSERT(object                != NULL);                               \
+                                                                            \
+    memcpy(object, object_params, sizeof(object_type));                     \
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_point_light_params(rt_world_t*              world,
-                                            rt_idx_t                 light_index,
-                                            const rt_point_light_t*  light_params)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(light_index   >= 0);
-    RT_ASSERT(light_params  != NULL);
+RT_DEFINE_SET_OBJECT_PARAMS(directional_light);
+RT_DEFINE_SET_OBJECT_PARAMS(point_light);
+RT_DEFINE_SET_OBJECT_PARAMS(emissive_material);
+RT_DEFINE_SET_OBJECT_PARAMS(checkerboard_material);
+RT_DEFINE_SET_OBJECT_PARAMS(diffuse_material);
+RT_DEFINE_SET_OBJECT_PARAMS(metallic_material);
+RT_DEFINE_SET_OBJECT_PARAMS(dielectric_material);
 
-    rt_point_light_t* light_buffer = world->point_light_buffer;
-    RT_ASSERT(light_buffer  != NULL);
-
-    rt_point_light_t* light = &light_buffer[light_index];
-    RT_ASSERT(light         != NULL);
-
-    memcpy(light, light_params, sizeof(rt_point_light_t));
+///////////////////////////////////////////////////////////////////////////
+#define RT_DEFINE_SET_GEOMETRY_OBJECT_PARAMS(OBJECT)                        \
+RT_API void RT_CONCAT3(rt_world_set_, OBJECT, _params)                      \
+(                                                                           \
+ rt_world_t*                                world,                          \
+ rt_idx_t                                   object_index,                   \
+ const RT_CONCAT3(rt_, OBJECT, _params_t)*  object_params                   \
+)                                                                           \
+{                                                                           \
+    RT_ASSERT(world                 != NULL);                               \
+    RT_ASSERT(object_index          >= 0);                                  \
+    RT_ASSERT(object_params         != NULL);                               \
+                                                                            \
+    typedef RT_CONCAT3(rt_, OBJECT, _t) object_type;                        \
+    object_type* object_buffer       = world->RT_CONCAT2(OBJECT, _buffer);  \
+                                                                            \
+    object_type* object              = &object_buffer[object_index];        \
+    RT_ASSERT(object                != NULL);                               \
+                                                                            \
+    typedef RT_CONCAT3(rt_, OBJECT, _params_t) params_type;                 \
+    params_type* params_ptr          = &object->geometry_params;            \
+                                                                            \
+    memcpy(params_ptr, object_params, sizeof(params_type));                 \
 }
 
 ///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_sphere_params(rt_world_t*                  world,
-                                       rt_idx_t                     sphere_index,
-                                       const rt_sphere_params_t*    sphere_params)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(sphere_index  >= 0);
-    RT_ASSERT(sphere_params != NULL);
-
-    rt_sphere_t* sphere_buffer = world->sphere_buffer;
-    RT_ASSERT(sphere_buffer != NULL);
-
-    rt_sphere_t* sphere = &sphere_buffer[sphere_index];
-    RT_ASSERT(sphere        != NULL);
-
-    memcpy(&sphere->geometry_params, sphere_params, sizeof(rt_sphere_params_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_plane_params(rt_world_t*               world,
-                                      rt_idx_t                  plane_index,
-                                      const rt_plane_params_t*  plane_params)
-{
-    RT_ASSERT(world         != NULL);
-    RT_ASSERT(plane_index   >= 0);
-    RT_ASSERT(plane_params  != NULL);
-
-    rt_plane_t* plane_buffer = world->plane_buffer;
-    RT_ASSERT(plane_buffer  != NULL);
-
-    rt_plane_t* plane = &plane_buffer[plane_index];
-    RT_ASSERT(plane         != NULL);
-
-    memcpy(&plane->geometry_params, plane_params, sizeof(rt_plane_params_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_emissive_material_params(rt_world_t*                    world,
-                                                  rt_idx_t                       material_index,
-                                                  const rt_emissive_material_t*  material_params)
-{
-    RT_ASSERT(world             != NULL);
-    RT_ASSERT(material_index    >= 0);
-    RT_ASSERT(material_params   != NULL);
-
-    rt_emissive_material_t* material_buffer = world->emissive_material_buffer;
-    RT_ASSERT(material_buffer   != NULL);
-
-    rt_emissive_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material          != NULL);
-
-    memcpy(material, material_params, sizeof(rt_emissive_material_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_checkerboard_material_params(rt_world_t*                        world,
-                                                      rt_idx_t                           material_index,
-                                                      const rt_checkerboard_material_t*  material_params)
-{
-    RT_ASSERT(world             != NULL);
-    RT_ASSERT(material_index    >= 0);
-    RT_ASSERT(material_params   != NULL);
-
-    rt_checkerboard_material_t* material_buffer = world->checkerboard_material_buffer;
-    RT_ASSERT(material_buffer   != NULL);
-
-    rt_checkerboard_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material          != NULL);
-
-    memcpy(material, material_params, sizeof(rt_checkerboard_material_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_diffuse_material_params(rt_world_t*                     world,
-                                                 rt_idx_t                        material_index,
-                                                 const rt_diffuse_material_t*    material_params)
-{
-    RT_ASSERT(world             != NULL);
-    RT_ASSERT(material_index    >= 0);
-    RT_ASSERT(material_params   != NULL);
-
-    rt_diffuse_material_t* material_buffer = world->diffuse_material_buffer;
-    RT_ASSERT(material_buffer   != NULL);
-
-    rt_diffuse_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material          != NULL);
-
-    memcpy(material, material_params, sizeof(rt_diffuse_material_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_metallic_material_params(rt_world_t*                    world,
-                                                  rt_idx_t                       material_index,
-                                                  const rt_metallic_material_t*  material_params)
-{
-    RT_ASSERT(world             != NULL);
-    RT_ASSERT(material_index    >= 0);
-    RT_ASSERT(material_params   != NULL);
-
-    rt_metallic_material_t* material_buffer = world->metallic_material_buffer;
-    RT_ASSERT(material_buffer   != NULL);
-
-    rt_metallic_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material          != NULL);
-
-    memcpy(material, material_params, sizeof(rt_metallic_material_t));
-}
-
-///////////////////////////////////////////////////////////////////////////
-RT_API void rt_world_set_dielectric_material_params(rt_world_t*                      world,
-                                                    rt_idx_t                         material_index,
-                                                    const rt_dielectric_material_t*  material_params)
-{
-    RT_ASSERT(world             != NULL);
-    RT_ASSERT(material_index    >= 0);
-    RT_ASSERT(material_params   != NULL);
-
-    rt_dielectric_material_t* material_buffer = world->dielectric_material_buffer;
-    RT_ASSERT(material_buffer   != NULL);
-
-    rt_dielectric_material_t* material = &material_buffer[material_index];
-    RT_ASSERT(material          != NULL);
-
-    memcpy(material, material_params, sizeof(rt_dielectric_material_t));
-}
+RT_DEFINE_SET_GEOMETRY_OBJECT_PARAMS(sphere);
+RT_DEFINE_SET_GEOMETRY_OBJECT_PARAMS(plane);
 
 ///////////////////////////////////////////////////////////////////////////
 #define RT_WORLD_DEF_CLOSEST_HIT(GEOMETRY)                                  \
@@ -4305,7 +4240,7 @@ RT_API void rt_notcurses_surface_change_blitter(rt_notcurses_surface_t*     surf
     if (surface->blitter != blitter) {
 
         surface->blitter                    = blitter;
-        surface->visual_options.blitter     = rt_rayterm_blitter_to_notcurses_blitter(  blitter);
+        surface->visual_options.blitter     = rt_rayterm_blitter_to_notcurses_blitter(blitter);
     }
 
     rt_notcurses_surface_resize(surface, framebuffer, allocator);
@@ -4578,6 +4513,29 @@ RT_API void rt_notcurses_surface_blit(const rt_notcurses_surface_blit_params_t* 
             assert(false && "rt_notcurses_surface_blit: unknown blitter");
             break;
     }
+}
+
+///////////////////////////////////////////////////////////////////////////
+RT_API void rt_notcurses_render_debug_log(struct ncplane* render_surface)
+{
+    RT_ASSERT(render_surface       != NULL);
+
+    uint64_t channels               = 0;
+
+    ncchannels_set_fg_rgb(&channels, 0xffffff);
+    ncchannels_set_fg_alpha(&channels, NCALPHA_OPAQUE);
+    ncchannels_set_bg_alpha(&channels, NCALPHA_TRANSPARENT);
+    ncplane_set_channels(render_surface, channels);
+
+    char version_log[RT_DEBUG_LOG_LINE_MAX];
+    snprintf(version_log,
+             RT_DEBUG_LOG_LINE_MAX,
+             "RAYTERM v%d.%d.%d",
+             RT_ENGINE_VERSION_MAJOR,
+             RT_ENGINE_VERSION_MINOR,
+             RT_ENGINE_VERSION_PATCH);
+
+    ncplane_putstr_yx(render_surface, 0, 0, version_log);
 }
 
 #endif // RT_USE_NOTCURSES
@@ -5037,8 +4995,8 @@ RT_API void rt_fps_camera_render(rt_fps_camera_render_params_t* params)
         }
     }
 
-    hdr_color_avg_accum     = hdr_color_avg_accum / (rt_float_t)(cols * rows);
-    camera->exposure_new    = RT_FLOAT(1.0) / (hdr_color_avg_accum + RT_FLOAT(1.0));
+    hdr_color_avg_accum             = hdr_color_avg_accum / (rt_float_t)(cols * rows);
+    camera->exposure_new            = RT_FLOAT(1.0) / (hdr_color_avg_accum + RT_FLOAT(1.0));
 }
 
 ///////////////////////////////////////////////////////////////////////////
